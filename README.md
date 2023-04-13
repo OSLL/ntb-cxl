@@ -1,2 +1,2 @@
-# nbt-cxl
-NBT/CXL Bridge
+# ntb-cxl
+NTB/CXL Bridge
