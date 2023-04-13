@@ -57,8 +57,27 @@ User: root
 
 Password is not set
 
+## Check PCI bridge
+Command: ```lspci```
+
+Output:
+```
+00:00.0 Host bridge: Intel Corporation 440FX - 82441FX PMC [Natoma] (rev 02)
+00:01.0 ISA bridge: Intel Corporation 82371SB PIIX3 ISA [Natoma/Triton II]
+00:01.1 IDE interface: Intel Corporation 82371SB PIIX3 IDE [Natoma/Triton II]
+00:01.2 USB controller: Intel Corporation 82371SB PIIX3 USB [Natoma/Triton II] (rev 01)
+00:01.3 Bridge: Intel Corporation 82371AB/EB/MB PIIX4 ACPI (rev 03)
+00:02.0 VGA compatible controller: Device 1234:1111 (rev 02)
+00:03.0 Ethernet controller: Red Hat, Inc. Virtio network device
+00:04.0 Unclassified device [00ff]: Red Hat, Inc. Virtio RNG
+00:05.0 PCI bridge: Red Hat, Inc. QEMU PCI-PCI bridge
+00:06.0 SCSI storage controller: Red Hat, Inc. Virtio block device
+
+```
+
 ## Check kernel modules
-Run: ```dmesg``` to see the kernel logs.
+### Check by kernel logs
+Command: ```dmesg``` to see the kernel logs.
 
 And you will see something like that:
 ```
@@ -68,9 +87,13 @@ And you will see something like that:
 [    3.875051] Software Queue-Pair Transport over NTB, version 4
 ```
 
-```lsmod``` doesn`t show any modules.
+## Check by utility
+Command ```lsmod``` doesn`t show any modules.
 
-```find / | grep ntb``` will give:
+## Check by sysfs
+Command ```find / | grep ntb```:
+
+Output:
 
 ```
 /sys/kernel/debug/ntb_transport
