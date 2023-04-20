@@ -8,3 +8,4 @@
 * [QEMU LevPCI device](https://github.com/levex/kernel-qemu-pci)
 * [Patch for implementing PCIEFW in QEMU](https://github.com/texane/vpcie)
 * [Mocking PCI devices in a User Mode Linux environment](https://github.com/dgrafe/pci-mock)
+* [Gentoo wiki about PCI pass-through for qemu](https://wiki.gentoo.org/wiki/QEMU/Options#PCI_pass-through)
