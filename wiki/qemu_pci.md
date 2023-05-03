@@ -18,3 +18,4 @@
 * [Another PCI passthrogh guid](https://www.nest.org.ru/2021/03/22/%D0%BF%D1%80%D0%BE%D0%B1%D1%80%D0%BE%D1%81-pcie-%D0%B2-qemu/)
 * [Example of PCIe device emulation in qemu](https://github.com/luizinhosuraty/pciemu)
 * [Gentoo wiki about PCI pass-through for qemu](https://wiki.gentoo.org/wiki/QEMU/Options#PCI_pass-through)
+* [Presentation about PCI Express](https://www.uio.no/studier/emner/matnat/ifi/IN5050/h18/undervisningsmaterialet/pci_express_2018.pdf)

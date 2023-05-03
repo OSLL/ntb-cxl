@@ -35,4 +35,5 @@ runqemu qemux86-64 nographic qemuparams="-device vhost-vsock-pci,id=vhost-vsock-
 
 ## Other links
 
-* [Two qemu vms connected with vhost](https://github.com/wei-w-wang/vhost-pci)
+* [Two qemu VMs connected with vhost](https://github.com/wei-w-wang/vhost-pci)
+* [DPDK vhost sample application](https://doc.dpdk.org/guides-2.1/sample_app_ug/vhost.html)
