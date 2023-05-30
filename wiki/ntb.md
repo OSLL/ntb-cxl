@@ -9,6 +9,9 @@
 * [Some usefull presentation about NTB](https://www.snia.org/educational-library?search=NTB&field_edu_content_type_tid=All&field_assoc_event_name_tid=All&field_release_date_value_2%5Bvalue%5D%5Byear%5D=&field_focus_areas_tid=All&field_author_tid=&field_release_date_value=All&items_per_page=20&captcha_sid=2333586&captcha_token=6536b11fe622a8fcef53f08d333dc38b&captcha_cacheable=1)
 * [Simple NTB usecase](https://www.simula.no/file/s9709-smartio-gtc2019pdf/download)
 * [NTB hardware requirements](https://github.com/jonmason/ntb/wiki)
+* [Paper about NTB device lending](https://link.springer.com/content/pdf/10.1007/s10586-019-02988-0.pdf)
+* [Big overview of PCIe device lending](https://core.ac.uk/download/pdf/30904513.pdf)
+* [Secure I/O Device Sharing among Virtual Machines on Multiple Hosts](http://class.ece.iastate.edu/tyagi/cpre581/papers/ISCA13SecureIO.pdf)
 
 ## NTB examples links
 
