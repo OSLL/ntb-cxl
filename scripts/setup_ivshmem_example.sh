@@ -20,10 +20,8 @@ wget https://raw.githubusercontent.com/Gavincrz/ivshmem_example/master/userspace
 # Setup ivshmem kernel module
 cd $POKY_PATH/$LAYER_NAME/recipes-kernel
 cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-kernel/ivshmem-mod .
-cd ivshmem-mod
-mkdir -p files && cd files
+cd ivshmem-mod/files
 wget https://raw.githubusercontent.com/Gavincrz/ivshmem_example/master/ivshmem_common.h
 wget https://raw.githubusercontent.com/Gavincrz/ivshmem_example/master/kernel-module/ivshmem.c
-wget https://raw.githubusercontent.com/Gavincrz/ivshmem_example/master/kernel-module/Makefile
 # Replace include
 sed -i 's/#include "..\/ivshmem_common.h"/#include "ivshmem_common.h"/g' ivshmem.c
