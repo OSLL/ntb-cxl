@@ -34,4 +34,7 @@ fi
 cp $ROOT_PROJECT_PATH/yocto_files/configs/local.conf ./conf/local.conf
 cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-kernel ../$LAYER_NAME/recipes-kernel
 
+#touch conf/sanity.conf
+$ROOT_PROJECT_PATH/scripts/compile_image.sh
+
 set +x
