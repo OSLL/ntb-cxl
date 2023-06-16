@@ -1,7 +1,7 @@
-FROM python:3.9
+FROM ubuntu:20.04
 
 # Install deps
-RUN apt-get update && apt-get -y install wget git locales chrpath cpio diffstat gawk zstd liblz4-tool
+RUN apt-get update && apt-get -y install wget git locales chrpath cpio diffstat gawk zstd liblz4-tool python3.6 python3-pip
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
@@ -26,4 +26,4 @@ WORKDIR $PROJECT_PATH
 ADD ./scripts $PROJECT_PATH/scripts 
 ADD ./yocto_files $PROJECT_PATH/yocto_files
 
-CMD bash $PROJECT_PATH/scripts/prepare_yocto.sh $BUILD_PATH
+CMD bash $PROJECT_PATH/scripts/prepare_yocto_and_build.sh $BUILD_PATH
