@@ -34,7 +34,9 @@ fi
 cp $ROOT_PROJECT_PATH/yocto_files/configs/local.conf ./conf/local.conf
 cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-kernel ../$LAYER_NAME/recipes-kernel
 
-#touch conf/sanity.conf
-$ROOT_PROJECT_PATH/scripts/compile_image.sh
+bitbake -c kernel_configme -f virtual/kernel && \
+bitbake -c compile -f virtual/kernel && \
+bitbake -c deploy virtual/kernel && \
+bitbake core-image-full-cmdline
 
 set +x
