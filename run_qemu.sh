@@ -1,6 +1,11 @@
 #!/bin/bash
 CUR_PATH=$(pwd)
-BUILD_FOLDER_NAME=build_vm_image/
+if [ $# -lt 1 ]; then
+    echo -e "\e[1;33mBuild dir is not provided, using 'build_vm_image' dir\e[0m"
+    BUILD_FOLDER_NAME=build_vm_image/
+else
+    BUILD_FOLDER_NAME="$1"
+fi
 
 
 BUILD_PATH=$CUR_PATH/$BUILD_FOLDER_NAME

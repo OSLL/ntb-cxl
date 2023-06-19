@@ -10,12 +10,13 @@ ENV LC_ALL en_US.UTF-8
 
 # Set path names for volume and build dirs
 ARG build_folder_name=build_vm_image/
+ARG user_id=1000
 
 ENV PROJECT_PATH /home/user/project
 ENV BUILD_PATH $PROJECT_PATH/$build_folder_name
 
 # Create user for yocto
-RUN useradd -rm -d /home/user -s /bin/bash -g root -G sudo user -u 1000
+RUN useradd -rm -d /home/user -s /bin/bash -g root -G sudo user -u $user_id
 USER user
 
 # Creating build path
