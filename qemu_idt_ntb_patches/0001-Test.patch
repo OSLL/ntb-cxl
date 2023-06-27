@@ -1,0 +1,163 @@
+From 9e6af4909dce801fab76e9905d47ac1fd151467c Mon Sep 17 00:00:00 2001
+From: name <you@example.com>
+Date: Tue, 27 Jun 2023 15:57:15 +0000
+Subject: [PATCH] Test
+
+---
+ hw/misc/ivshmem.c | 53 +++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 44 insertions(+), 9 deletions(-)
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index d66d912172..721b36bb68 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -40,20 +40,20 @@
+ #include "hw/misc/ivshmem.h"
+ #include "qom/object.h"
+ 
+-#define PCI_VENDOR_ID_IVSHMEM   PCI_VENDOR_ID_REDHAT_QUMRANET
+-#define PCI_DEVICE_ID_IVSHMEM   0x1110
++#define PCI_VENDOR_ID_IVSHMEM   0x111D
++#define PCI_DEVICE_ID_IVSHMEM   0x8091
+ 
+ #define IVSHMEM_MAX_PEERS UINT16_MAX
+ #define IVSHMEM_IOEVENTFD   0
+ #define IVSHMEM_MSI     1
+ 
+-#define IVSHMEM_REG_BAR_SIZE 0x100
++#define IVSHMEM_REG_BAR_SIZE 0x1000
+ 
+-#define IVSHMEM_DEBUG 0
++#define IVSHMEM_DEBUG 1
+ #define IVSHMEM_DPRINTF(fmt, ...)                       \
+     do {                                                \
+         if (IVSHMEM_DEBUG) {                            \
+-            printf("IVSHMEM: " fmt, ## __VA_ARGS__);    \
++            fprintf(stderr, "IVSHMEM: " fmt, ## __VA_ARGS__);    \
+         }                                               \
+     } while (0)
+ 
+@@ -217,6 +217,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+ 
+     IVShmemState *s = opaque;
+     uint32_t ret;
++    IVSHMEM_DPRINTF("Reading at " HWADDR_FMT_plx "\n", addr);
+ 
+     switch (addr)
+     {
+@@ -232,6 +233,12 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+             ret = s->vm_id;
+             break;
+ 
++        case 0x00407U:
++            ret = 0;
++            ret |= (0x0 << 1);
++	    ret |= (0xC0 << 4);
++            break;
++
+         default:
+             IVSHMEM_DPRINTF("why are we reading " HWADDR_FMT_plx "\n", addr);
+             ret = 0;
+@@ -818,6 +825,7 @@ static void ivshmem_write_config(PCIDevice *pdev, uint32_t address,
+                                  uint32_t val, int len)
+ {
+     IVShmemState *s = IVSHMEM_COMMON(pdev);
++    IVSHMEM_DPRINTF("Writing config value 0x%x to address 0x%x\n", val, address);
+     int is_enabled, was_enabled = msix_enabled(pdev);
+ 
+     pci_default_write_config(pdev, address, val, len);
+@@ -832,6 +840,26 @@ static void ivshmem_write_config(PCIDevice *pdev, uint32_t address,
+     }
+ }
+ 
++static uint32_t ivshmem_read_config(PCIDevice *pdev, uint32_t address,
++                                 int len)
++{
++    uint32_t ret;
++	ret = pci_default_read_config(pdev, address, len);
++    IVSHMEM_DPRINTF("Default config value at address 0x%x is 0x%x\n", address, ret);
++    switch(address){
++        case 0x470: // IDT_NT_BARSETUP0
++        case 0x1CU: // Why 0x1C ???
++            ret = 0;
++			ret |= (0 << 1); 
++			ret |= (0xC0U << 4);
++			break;
++		default:
++			ret = pci_default_read_config(pdev, address, len);
++	};
++    IVSHMEM_DPRINTF("Reading config value 0x%x at address 0x%x\n", ret, address);
++	return ret;
++}
++
+ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
+ {
+     IVShmemState *s = IVSHMEM_COMMON(dev);
+@@ -847,6 +875,9 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
+ 
+     pci_conf = dev->config;
+     pci_conf[PCI_COMMAND] = PCI_COMMAND_IO | PCI_COMMAND_MEMORY;
++    IVSHMEM_DPRINTF("Setting value for config\n");
++	pci_set_long(&pci_conf[0x1C], 0xc00U); 
++	pci_set_long(&pci_conf[0x470], 0xc00U); 
+ 
+     memory_region_init_io(&s->ivshmem_mmio, OBJECT(s), &ivshmem_mmio_ops, s,
+                           "ivshmem-mmio", IVSHMEM_REG_BAR_SIZE);
+@@ -910,11 +941,11 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
+     }
+ 
+     vmstate_register_ram(s->ivshmem_bar2, DEVICE(s));
+-    pci_register_bar(PCI_DEVICE(s), 2,
++    /*pci_register_bar(PCI_DEVICE(s), 2,
+                      PCI_BASE_ADDRESS_SPACE_MEMORY |
+                      PCI_BASE_ADDRESS_MEM_PREFETCH |
+                      PCI_BASE_ADDRESS_MEM_TYPE_64,
+-                     s->ivshmem_bar2);
++                     s->ivshmem_bar2);*/
+ }
+ 
+ static void ivshmem_exit(PCIDevice *dev)
+@@ -992,13 +1023,14 @@ static void ivshmem_common_class_init(ObjectClass *klass, void *data)
+     k->realize = ivshmem_common_realize;
+     k->exit = ivshmem_exit;
+     k->config_write = ivshmem_write_config;
++    k->config_read = ivshmem_read_config;
+     k->vendor_id = PCI_VENDOR_ID_IVSHMEM;
+     k->device_id = PCI_DEVICE_ID_IVSHMEM;
+-    k->class_id = PCI_CLASS_MEMORY_RAM;
++    k->class_id = PCI_CLASS_BRIDGE_OTHER;
+     k->revision = 1;
+     dc->reset = ivshmem_reset;
+     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+-    dc->desc = "Inter-VM shared memory";
++    dc->desc = "Custom IDT Inter-VM shared memory";
+ }
+ 
+ static const TypeInfo ivshmem_common_info = {
+@@ -1009,6 +1041,7 @@ static const TypeInfo ivshmem_common_info = {
+     .class_init    = ivshmem_common_class_init,
+     .interfaces = (InterfaceInfo[]) {
+         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
++        { INTERFACE_PCIE_DEVICE },
+         { },
+     },
+ };
+@@ -1096,6 +1129,7 @@ static void ivshmem_doorbell_init(Object *obj)
+     IVShmemState *s = IVSHMEM_DOORBELL(obj);
+ 
+     s->features |= (1 << IVSHMEM_MSI);
++	PCI_DEVICE(obj)->cap_present |= QEMU_PCI_CAP_EXPRESS;
+ }
+ 
+ static void ivshmem_doorbell_realize(PCIDevice *dev, Error **errp)
+@@ -1116,6 +1150,7 @@ static void ivshmem_doorbell_class_init(ObjectClass *klass, void *data)
+     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+ 
+     k->realize = ivshmem_doorbell_realize;
++    k->config_read = ivshmem_read_config;
+     device_class_set_props(dc, ivshmem_doorbell_properties);
+     dc->vmsd = &ivshmem_doorbell_vmsd;
+ }
+-- 
+2.30.2
+
