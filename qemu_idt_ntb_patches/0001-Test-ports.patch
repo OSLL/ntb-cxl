@@ -1,0 +1,101 @@
+From a39472157d6b56cba4a00251d1229b70910a3d0a Mon Sep 17 00:00:00 2001
+From: name <you@example.com>
+Date: Wed, 5 Jul 2023 16:17:39 +0000
+Subject: [PATCH] Test ports
+
+---
+ hw/misc/ivshmem.c | 39 ++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 34 insertions(+), 5 deletions(-)
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index a2872324a3..9ceb44fd78 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -47,7 +47,7 @@
+ #define IVSHMEM_IOEVENTFD   0
+ #define IVSHMEM_MSI     1
+ 
+-#define IVSHMEM_REG_BAR_SIZE 0x100
++#define IVSHMEM_REG_BAR_SIZE 0x1000
+ 
+ #define IVSHMEM_DEBUG 1
+ #define IVSHMEM_DPRINTF(fmt, ...)                       \
+@@ -117,6 +117,9 @@ struct IVShmemState {
+     /* migration stuff */
+     OnOffAuto master;
+     Error *migration_blocker;
++
++    /* Fields for IDT */
++    uint64_t gasaaddr;
+ };
+ 
+ /* registers for the Inter-VM shared memory device */
+@@ -177,9 +180,19 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+     uint16_t dest = val >> 16;
+     uint16_t vector = val & 0xff;
+ 
+-    addr &= 0xfc;
++    //addr &= 0xfc;
+ 
+-    IVSHMEM_DPRINTF("writing to addr " HWADDR_FMT_plx "\n", addr);
++    IVSHMEM_DPRINTF("Writing to addr " HWADDR_FMT_plx " value 0x%lx\n", addr, val);
++    switch (addr){
++        case 0xFF8U:  // GASAADDR
++            s->gasaaddr = val;
++            break;
++        default:
++            IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
++    }
++    return;
++    /* Ivshmem code 
++     * ============ */
+     switch (addr)
+     {
+         case INTRMASK:
+@@ -211,13 +224,25 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+     }
+ }
+ 
++static uint64_t get_gasadata(IVShmemState *s){
++    uint64_t ret;
++    switch (s->gasaaddr){
++        case 0x3E244U:  // IDT_SW_SWPORT2STS
++            ret = 0x4321;  // Random value
++            break;
++        default:
++            IVSHMEM_DPRINTF("Not implemented gasadata on reg 0x%lx\n", s->gasaaddr);
++            ret = 0;
++    }
++    return ret;
++}
++
+ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+                                 unsigned size)
+ {
+ 
+     IVShmemState *s = opaque;
+-    uint32_t ret;
+-    IVSHMEM_DPRINTF("Reading at " HWADDR_FMT_plx "\n", addr);
++    uint64_t ret;
+ 
+     switch (addr)
+     {
+@@ -233,11 +258,15 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+             ret = s->vm_id;
+             break;
+ 
++        case 0xFFCU:  // GASADATA
++            ret = get_gasadata(s);
++            break;
+         default:
+             IVSHMEM_DPRINTF("why are we reading " HWADDR_FMT_plx "\n", addr);
+             ret = 0;
+     }
+ 
++    IVSHMEM_DPRINTF("Readed value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
+     return ret;
+ }
+ 
+-- 
+2.30.2
+
