@@ -1,0 +1,100 @@
+From 181fe4302406c0034bff675a380dde341069d797 Mon Sep 17 00:00:00 2001
+From: name <you@example.com>
+Date: Wed, 5 Jul 2023 11:44:25 +0000
+Subject: [PATCH 1/2] Changed Vendor+Device IDs, added ivshmem_read_config
+ function, added initialization for msi interrupts
+
+---
+ hw/misc/ivshmem.c | 36 ++++++++++++++++++++++++++++++++----
+ 1 file changed, 32 insertions(+), 4 deletions(-)
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index d66d912172..d38d1c2a7d 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -40,8 +40,8 @@
+ #include "hw/misc/ivshmem.h"
+ #include "qom/object.h"
+ 
+-#define PCI_VENDOR_ID_IVSHMEM   PCI_VENDOR_ID_REDHAT_QUMRANET
+-#define PCI_DEVICE_ID_IVSHMEM   0x1110
++#define PCI_VENDOR_ID_IVSHMEM   0x111D  // IDT Vendor ID
++#define PCI_DEVICE_ID_IVSHMEM   0x8091  // PCI_DEVICE_ID_IDT_89HPES24NT6AG2 `from ntb_hw_idt.h`
+ 
+ #define IVSHMEM_MAX_PEERS UINT16_MAX
+ #define IVSHMEM_IOEVENTFD   0
+@@ -832,6 +832,27 @@ static void ivshmem_write_config(PCIDevice *pdev, uint32_t address,
+     }
+ }
+ 
++static uint32_t ivshmem_read_config(PCIDevice *pdev, uint32_t address,
++                                 int len)
++{
++    uint32_t ret;
++    ret = pci_default_read_config(pdev, address, len);
++    IVSHMEM_DPRINTF("Default config value at address 0x%x is 0x%x\n", address, ret);
++    switch(address){
++        case 0x470: // IDT_NT_BARSETUP0
++            ret = 0;
++            ret |= (0x0U << 1);
++            ret |= (0xCU << 4);  // Six bits
++            ret |= (0x1U << 10);
++            ret |= (0x1U << 31);
++            break;
++        default:
++            ret = pci_default_read_config(pdev, address, len);
++    };
++    IVSHMEM_DPRINTF("Reading config value 0x%x at address 0x%x\n", ret, address);
++    return ret;
++}
++
+ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
+ {
+     IVShmemState *s = IVSHMEM_COMMON(dev);
+@@ -894,6 +915,10 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
+             error_prepend(errp, "Failed to initialize interrupts: ");
+             return;
+         }
++        if (msi_init(dev, 0, 1, false, false, errp)) {  // Setup device for msi interrupts, see pci/msi.h
++            error_prepend(errp, "Failed to initialize MSI interrupts: ");
++            return;
++        }
+     }
+ 
+     if (s->master == ON_OFF_AUTO_AUTO) {
+@@ -992,13 +1017,14 @@ static void ivshmem_common_class_init(ObjectClass *klass, void *data)
+     k->realize = ivshmem_common_realize;
+     k->exit = ivshmem_exit;
+     k->config_write = ivshmem_write_config;
++    k->config_read = ivshmem_read_config;
+     k->vendor_id = PCI_VENDOR_ID_IVSHMEM;
+     k->device_id = PCI_DEVICE_ID_IVSHMEM;
+-    k->class_id = PCI_CLASS_MEMORY_RAM;
++    k->class_id = PCI_CLASS_BRIDGE_OTHER;
+     k->revision = 1;
+     dc->reset = ivshmem_reset;
+     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+-    dc->desc = "Inter-VM shared memory";
++    dc->desc = "Custom IDT NTB Inter-VM shared memory";
+ }
+ 
+ static const TypeInfo ivshmem_common_info = {
+@@ -1009,6 +1035,7 @@ static const TypeInfo ivshmem_common_info = {
+     .class_init    = ivshmem_common_class_init,
+     .interfaces = (InterfaceInfo[]) {
+         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
++        { INTERFACE_PCIE_DEVICE },
+         { },
+     },
+ };
+@@ -1096,6 +1123,7 @@ static void ivshmem_doorbell_init(Object *obj)
+     IVShmemState *s = IVSHMEM_DOORBELL(obj);
+ 
+     s->features |= (1 << IVSHMEM_MSI);
++    PCI_DEVICE(obj)->cap_present |= QEMU_PCI_CAP_EXPRESS;  // Device is PCI-Express
+ }
+ 
+ static void ivshmem_doorbell_realize(PCIDevice *dev, Error **errp)
+-- 
+2.30.2
+

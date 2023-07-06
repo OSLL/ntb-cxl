@@ -1,0 +1,46 @@
+From 08ca433ae616702a11035594d3da77aef34506b6 Mon Sep 17 00:00:00 2001
+From: name <you@example.com>
+Date: Wed, 5 Jul 2023 11:45:07 +0000
+Subject: [PATCH 2/2] Added debug output to stderr
+
+---
+ hw/misc/ivshmem.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index d38d1c2a7d..a2872324a3 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -49,11 +49,11 @@
+ 
+ #define IVSHMEM_REG_BAR_SIZE 0x100
+ 
+-#define IVSHMEM_DEBUG 0
++#define IVSHMEM_DEBUG 1
+ #define IVSHMEM_DPRINTF(fmt, ...)                       \
+     do {                                                \
+         if (IVSHMEM_DEBUG) {                            \
+-            printf("IVSHMEM: " fmt, ## __VA_ARGS__);    \
++            fprintf(stderr, "IVSHMEM: " fmt, ## __VA_ARGS__);    \
+         }                                               \
+     } while (0)
+ 
+@@ -217,6 +217,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+ 
+     IVShmemState *s = opaque;
+     uint32_t ret;
++    IVSHMEM_DPRINTF("Reading at " HWADDR_FMT_plx "\n", addr);
+ 
+     switch (addr)
+     {
+@@ -818,6 +819,7 @@ static void ivshmem_write_config(PCIDevice *pdev, uint32_t address,
+                                  uint32_t val, int len)
+ {
+     IVShmemState *s = IVSHMEM_COMMON(pdev);
++    IVSHMEM_DPRINTF("Writing config value 0x%x to address 0x%x\n", val, address);
+     int is_enabled, was_enabled = msix_enabled(pdev);
+ 
+     pci_default_write_config(pdev, address, val, len);
+-- 
+2.30.2
+
