@@ -4,6 +4,16 @@ Create qemu image from root dir of this project
 ## Install Yocto project dependencies
 ```sudo apt install gawk wget git diffstat unzip texinfo gcc build-essential chrpath socat cpio python3 python3-pip python3-pexpect xz-utils debianutils iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev pylint xterm python3-subunit mesa-common-dev zstd liblz4-tool```
 
+## Download yocto & Compile image with scripts
+
+1. Run the `prepare_yocto.sh` script from the root of project. You can specify the path to yocto working directory. By default, `build_vm` is used:
+```
+./scripts/prepare_yocto.sh ../build_dir/
+```
+2. Open the `poky` directory: `<path_to_provided_dir>/poky`
+3. Enable the yocto environment: `source oe-init-build-env`
+4. Run the `compile_image.sh` script. You should be in the `poky/build` directory
+
 ## Download yocto
 
 We will use **dunfell** LTS version of yocto
