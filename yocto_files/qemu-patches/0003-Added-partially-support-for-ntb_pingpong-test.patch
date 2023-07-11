@@ -1,0 +1,231 @@
+From 1c71ad3e641b5cb0f1e4185b2c5e5e418ad87cd1 Mon Sep 17 00:00:00 2001
+From: name <you@example.com>
+Date: Tue, 11 Jul 2023 15:19:11 +0000
+Subject: [PATCH] Added partially support for ntb_pingpong test
+
+* Added NT port with index 2
+* Added inbound and outbound messages
+* Added some logic of NTB IDT Switch (doorbels and messages)
+---
+ hw/misc/ivshmem.c | 145 +++++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 137 insertions(+), 8 deletions(-)
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index a2872324a3..6764554c98 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -47,7 +47,7 @@
+ #define IVSHMEM_IOEVENTFD   0
+ #define IVSHMEM_MSI     1
+ 
+-#define IVSHMEM_REG_BAR_SIZE 0x100
++#define IVSHMEM_REG_BAR_SIZE 0x1000
+ 
+ #define IVSHMEM_DEBUG 1
+ #define IVSHMEM_DPRINTF(fmt, ...)                       \
+@@ -117,6 +117,18 @@ struct IVShmemState {
+     /* migration stuff */
+     OnOffAuto master;
+     Error *migration_blocker;
++
++    /* Fields for IDT */
++    uint64_t gasaaddr;
++    uint64_t nt_mtb_addr;
++    // Currently only first value is used
++    uint64_t part0_msg_control[4];  // Control for inbound and outbound messages
++    uint64_t inbound[4];  // Inbound messages
++    uint64_t outbound[4];  // Outbound messages
++    // Not implemented
++    // uint8_t srcbound[4];  // Src partition of messages
++    uint32_t db_inbound;  // Inbound doorbell (related to patrition 0?)
++    uint32_t db_outbound;  // Outbound doorbell (related to partition 0?)
+ };
+ 
+ /* registers for the Inter-VM shared memory device */
+@@ -169,6 +181,8 @@ static uint32_t ivshmem_IntrStatus_read(IVShmemState *s)
+     return ret;
+ }
+ 
++static void write_gasadata(IVShmemState *s, uint64_t val);
++
+ static void ivshmem_io_write(void *opaque, hwaddr addr,
+                              uint64_t val, unsigned size)
+ {
+@@ -177,9 +191,37 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+     uint16_t dest = val >> 16;
+     uint16_t vector = val & 0xff;
+ 
+-    addr &= 0xfc;
++    //addr &= 0xfc;
+ 
+-    IVSHMEM_DPRINTF("writing to addr " HWADDR_FMT_plx "\n", addr);
++    IVSHMEM_DPRINTF("Writing to addr " HWADDR_FMT_plx " value 0x%lx\n", addr, val);
++    switch (addr){
++        case 0xFF8U:  // GASAADDR
++            s->gasaaddr = val;
++            break;
++        case 0x4D0U:  // IDT_NT_NTMTBLADDR
++            s->nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
++            break;
++        case 0xFFCU:  // GASADATA
++            write_gasadata(s, val);
++            break;
++        case 0x430U:  // IDT_NT_OUTMSG0
++            s->inbound[0] = val;
++            s->outbound[0] = val;
++            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound register 0\n", val);
++            break;
++        case 0x420U:  // IDT_NT_OUTDBELLSET
++            s->db_outbound = val;
++            s->db_inbound = s->db_outbound;
++            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound doorbell\n", val);
++            s->inbound[0]++;  // Act like ping pong
++            msi_notify(&s->parent_obj, 0);
++            break;
++        default:
++            IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
++    }
++    return;
++    /* Ivshmem code
++     * ============ */
+     switch (addr)
+     {
+         case INTRMASK:
+@@ -211,13 +253,72 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+     }
+ }
+ 
++static uint64_t get_gasadata(IVShmemState *s){
++    uint64_t ret;
++    switch (s->gasaaddr){
++        case 0x3E204U:  // IDT_SW_SWPORT0STS
++            ret = 0;
++            ret |= 0x1 << 4;  // Link up, data link layer is 'DL_up'
++            //ret = 1 << 5;  // Link mode is downstream
++            ret |= 0 << 10;  // Partion is 0x0
++            ret |= 0x3 << 6;  // NT Function is enabled
++            break;
++        case 0x3E244U:  // IDT_SW_SWPORT2STS
++            ret = 0;
++            ret |= 0x1U << 4;  // Link up, data link layer is 'DL_up'
++            //ret = 1 << 5;  // Link mode is downstream
++            ret |= 0U << 10;  // Partion is 0x0
++            ret |= 0x3U << 6;  // NT Function is enabled
++            break;
++        case 0x3E104U:  // IDT_SW_SWPART0STS
++            ret = 0;
++            ret |= 1U << 5;  // Part is enabled
++            break;
++        case 0x5004U:  // IDT_SW_NTP2_PCIECMDSTS
++            ret = 0;
++            ret |= 0x1U << 2;  // Bus Master is enabled
++            break;
++        case 0x5400U:  // IDT_SW_NTP2_NTCTL
++            ret = 0;
++            ret |= 0x1 << 1;  // Completion is enabled (CPEN flag)
++            break;
++        default:
++            IVSHMEM_DPRINTF("Not implemented gasadata read on reg 0x%lx\n", s->gasaaddr);
++            ret = 0;
++    }
++    return ret;
++}
++
++static void write_gasadata(IVShmemState *s, uint64_t val){
++    switch (s->gasaaddr){
++        case 0x3EE00U:  //  IDT_SW_SWP0MSGCTL0
++            s->part0_msg_control[0] = val;
++            break;
++        default:
++            IVSHMEM_DPRINTF("Not implemented gasadata write on reg 0x%lx\n", s->gasaaddr);
++    }
++}
++
++static uint64_t get_nt_mtb_data(IVShmemState *s){
++    uint64_t ret;
++    switch (s->nt_mtb_addr){
++        case 0x0U:  // Partion 0
++            ret = 0;
++            ret |= 0x1;  // Set VALID field
++            break;
++        default:
++            IVSHMEM_DPRINTF("Not implemented nt_mtb_addr on value 0x%lx\n", s->nt_mtb_addr);
++            ret = 0;
++    }
++    return ret;
++}
++
+ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+                                 unsigned size)
+ {
+ 
+     IVShmemState *s = opaque;
+-    uint32_t ret;
+-    IVSHMEM_DPRINTF("Reading at " HWADDR_FMT_plx "\n", addr);
++    uint64_t ret;
+ 
+     switch (addr)
+     {
+@@ -225,20 +326,48 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+             ret = ivshmem_IntrMask_read(s);
+             break;
+ 
+-        case INTRSTATUS:
++        /*case INTRSTATUS:
+             ret = ivshmem_IntrStatus_read(s);
+-            break;
++            break;*/
+ 
+         case IVPOSITION:
+             ret = s->vm_id;
+             break;
+ 
++        case 0xFFCU:  // GASADATA
++            ret = get_gasadata(s);
++            break;
++        case 0x4CU:  // IDT_NT_PCIELCAP
++            ret = 0;
++            ret |= 0x0U << 24;  // Local port number is 0x0
++            break;
++        case 0x4U:  // IDT_NT_PCICMDSTS
++            ret = 0;
++            ret |= 0x1U << 2;  // Bus Master is enabled
++            break;
++        case 0x400U:  // IDT_NT_NTCTL
++            ret = 0;
++            ret |= 0x1 << 1;  // Completion is enabled (CPEN flag)
++            break;
++        case 0x4D8U:  // IDT_NT_NTMTBLDATA
++            ret = get_nt_mtb_data(s);
++            break;
++        case 0x404U:  // IDT_NT_NTINTSTS, used when handling interrupts
++            ret = 0;
++            ret |= 0x1U << 1;  // Doorbell interrupt
++            break;
++        case 0x440U:  // IDT_NT_INMSG0
++            ret = s->inbound[0];
++            break;
+         default:
+             IVSHMEM_DPRINTF("why are we reading " HWADDR_FMT_plx "\n", addr);
+             ret = 0;
+     }
+ 
++    IVSHMEM_DPRINTF("Readed value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
+     return ret;
++    // Preserve -Werror=unused-function
++    ret = ivshmem_IntrStatus_read(s);
+ }
+ 
+ static const MemoryRegionOps ivshmem_mmio_ops = {
+@@ -841,7 +970,7 @@ static uint32_t ivshmem_read_config(PCIDevice *pdev, uint32_t address,
+     ret = pci_default_read_config(pdev, address, len);
+     IVSHMEM_DPRINTF("Default config value at address 0x%x is 0x%x\n", address, ret);
+     switch(address){
+-        case 0x470: // IDT_NT_BARSETUP0
++        case 0x470U: // IDT_NT_BARSETUP0
+             ret = 0;
+             ret |= (0x0U << 1);
+             ret |= (0xCU << 4);  // Six bits
+-- 
+2.30.2
+
