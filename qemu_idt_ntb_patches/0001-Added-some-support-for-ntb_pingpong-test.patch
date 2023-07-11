@@ -1,0 +1,95 @@
+From 214bc5e1a4051696c2c48fb1e955ead546c70f28 Mon Sep 17 00:00:00 2001
+From: name <you@example.com>
+Date: Tue, 11 Jul 2023 14:55:51 +0000
+Subject: [PATCH] Added some support for ntb_pingpong test
+
+---
+ hw/misc/ivshmem.c | 39 ++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 38 insertions(+), 1 deletion(-)
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index 6f2f439195..22346cd011 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -121,6 +121,12 @@ struct IVShmemState {
+     /* Fields for IDT */
+     uint64_t gasaaddr;
+     uint64_t nt_mtb_addr;
++    uint64_t part0_msg_control[4];  // Control for inbound and outbound messages
++    uint64_t inbound[4];  // Inbound messages
++    uint64_t outbound[4];  // Outbound messages
++    uint8_t srcbound[4];  // Src partition of messages
++    uint32_t db_inbound;  // Inbound doorbell related to patrition 0
++    uint32_t db_outbound;  // Outbound doorbell related to partition 0
+ };
+ 
+ /* registers for the Inter-VM shared memory device */
+@@ -173,6 +179,8 @@ static uint32_t ivshmem_IntrStatus_read(IVShmemState *s)
+     return ret;
+ }
+ 
++static void write_gasadata(IVShmemState *s, uint64_t val);
++
+ static void ivshmem_io_write(void *opaque, hwaddr addr,
+                              uint64_t val, unsigned size)
+ {
+@@ -191,6 +199,21 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+         case 0x4D0U:  // IDT_NT_NTMTBLADDR
+             s->nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
+             break;
++        case 0xFFCU:  // GASADATA
++            write_gasadata(s, val);
++            break;
++        case 0x430U:  // IDT_NT_OUTMSG0
++            s->inbound[0] = val;
++            s->outbound[0] = val;
++            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound register 0\n", val);
++            break;
++        case 0x420U:  // IDT_NT_OUTDBELLSET
++            s->db_outbound = val;
++            s->db_inbound = s->db_outbound;
++            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound doorbell\n", val);
++            s->inbound[0]++;  // Act like ping pong
++            msi_notify(&s->parent_obj, 0);
++            break;
+         default:
+             IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
+     }
+@@ -258,12 +281,22 @@ static uint64_t get_gasadata(IVShmemState *s){
+             ret |= 0x1 << 1;  // Completion is enabled (CPEN flag)
+             break;
+         default:
+-            IVSHMEM_DPRINTF("Not implemented gasadata on reg 0x%lx\n", s->gasaaddr);
++            IVSHMEM_DPRINTF("Not implemented gasadata read on reg 0x%lx\n", s->gasaaddr);
+             ret = 0;
+     }
+     return ret;
+ }
+ 
++static void write_gasadata(IVShmemState *s, uint64_t val){
++    switch (s->gasaaddr){
++        case 0x3EE00U:  //  IDT_SW_SWP0MSGCTL0
++            s->part0_msg_control[0] = val;
++            break;
++        default:
++            IVSHMEM_DPRINTF("Not implemented gasadata write on reg 0x%lx\n", s->gasaaddr);
++    }
++}
++
+ static uint64_t get_nt_mtb_data(IVShmemState *s){
+     uint64_t ret;
+     switch (s->nt_mtb_addr){
+@@ -317,6 +350,10 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
+         case 0x4D8U:  // IDT_NT_NTMTBLDATA
+             ret = get_nt_mtb_data(s);
+             break;
++        case 0x404U:  // IDT_NT_NTINTSTS, used when handling interrupts
++            ret = 0;
++            ret |= 0x1U << 1;  // Doorbell interrupt
++            break;
+         default:
+             IVSHMEM_DPRINTF("why are we reading " HWADDR_FMT_plx "\n", addr);
+             ret = 0;
+-- 
+2.30.2
+
