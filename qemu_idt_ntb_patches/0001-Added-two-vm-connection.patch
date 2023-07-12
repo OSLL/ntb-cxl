@@ -1,0 +1,197 @@
+From e84f1a7653b3306118e25d0a9c3e422c95e78c62 Mon Sep 17 00:00:00 2001
+From: name <you@example.com>
+Date: Wed, 12 Jul 2023 14:25:59 +0000
+Subject: [PATCH] Added two vm connection
+
+---
+ hw/misc/ivshmem.c | 97 +++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 93 insertions(+), 4 deletions(-)
+
+diff --git a/hw/misc/ivshmem.c b/hw/misc/ivshmem.c
+index 6764554c98..147ab7ca26 100644
+--- a/hw/misc/ivshmem.c
++++ b/hw/misc/ivshmem.c
+@@ -46,6 +46,11 @@
+ #define IVSHMEM_MAX_PEERS UINT16_MAX
+ #define IVSHMEM_IOEVENTFD   0
+ #define IVSHMEM_MSI     1
++#define IVSHMEM_IDT_OUTREG_INDEX 2
++#define IVSHMEM_NTB_VM_1_INDEX 3
++#define IVSHMEM_NTB_VM_2_INDEX 4
++#define IVSHMEM_NTB_CONNECT_MSG 1
++#define IVSHMEM_NTB_INT_MSG 2
+ 
+ #define IVSHMEM_REG_BAR_SIZE 0x1000
+ 
+@@ -129,6 +134,10 @@ struct IVShmemState {
+     // uint8_t srcbound[4];  // Src partition of messages
+     uint32_t db_inbound;  // Inbound doorbell (related to patrition 0?)
+     uint32_t db_outbound;  // Outbound doorbell (related to partition 0?)
++
++    /* IDT interconnect */
++    uint32_t self_number;
++    int other_vm_id;
+ };
+ 
+ /* registers for the Inter-VM shared memory device */
+@@ -181,6 +190,24 @@ static uint32_t ivshmem_IntrStatus_read(IVShmemState *s)
+     return ret;
+ }
+ 
++static void write_data_to_shm(IVShmemState *s, int index, uint64_t val){
++    uint64_t *addr;
++    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
++    addr[index] = val;
++}
++
++static uint64_t read_data_from_shm(IVShmemState *s, int index){
++    uint64_t *addr;
++    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
++    return addr[index];
++}
++
++static void write_outbound_register(IVShmemState *s){
++    uint64_t *addr;
++    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
++    addr[IVSHMEM_IDT_OUTREG_INDEX] = s->outbound[0];
++}
++
+ static void write_gasadata(IVShmemState *s, uint64_t val);
+ 
+ static void ivshmem_io_write(void *opaque, hwaddr addr,
+@@ -205,7 +232,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+             write_gasadata(s, val);
+             break;
+         case 0x430U:  // IDT_NT_OUTMSG0
+-            s->inbound[0] = val;
++            //s->inbound[0] = val;
+             s->outbound[0] = val;
+             IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound register 0\n", val);
+             break;
+@@ -213,8 +240,12 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
+             s->db_outbound = val;
+             s->db_inbound = s->db_outbound;
+             IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound doorbell\n", val);
+-            s->inbound[0]++;  // Act like ping pong
+-            msi_notify(&s->parent_obj, 0);
++            write_outbound_register(s);
++            write_data_to_shm(s, (s->self_number ? IVSHMEM_NTB_VM_2_INDEX : IVSHMEM_NTB_VM_1_INDEX), IVSHMEM_NTB_INT_MSG);
++            event_notifier_set(&s->peers[s->other_vm_id].eventfds[0]);
++            IVSHMEM_DPRINTF("Sended msg interrupt from %d to %d\n", s->vm_id, s->other_vm_id);
++            // s->inbound[0]++;  // Act like ping pong
++            // msi_notify(&s->parent_obj, 0);
+             break;
+         default:
+             IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
+@@ -380,6 +411,14 @@ static const MemoryRegionOps ivshmem_mmio_ops = {
+     },
+ };
+ 
++static uint64_t read_outbound_register(IVShmemState *s){
++    uint64_t *addr;
++    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
++    return addr[IVSHMEM_IDT_OUTREG_INDEX];
++}
++
++static int read_other_vm_id(IVShmemState *s);
++
+ static void ivshmem_vector_notify(void *opaque)
+ {
+     MSIVector *entry = opaque;
+@@ -392,7 +431,21 @@ static void ivshmem_vector_notify(void *opaque)
+         return;
+     }
+ 
+-    IVSHMEM_DPRINTF("interrupt on vector %p %d\n", pdev, vector);
++    IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
++    //if(vector != 0){
++    //    return;
++    //}
++    int msg_type = read_data_from_shm(s, (s->self_number ? IVSHMEM_NTB_VM_1_INDEX : IVSHMEM_NTB_VM_2_INDEX));
++    IVSHMEM_DPRINTF("MSG type is %d\n", msg_type);
++    if(msg_type == IVSHMEM_NTB_CONNECT_MSG){
++        s->other_vm_id = read_other_vm_id(s);
++    }else{
++        s->inbound[0] = read_outbound_register(s);
++        msi_notify(&s->parent_obj, 0);
++    }
++    return;
++    /* ivshmem code
++     * ============ */
+     if (ivshmem_has_feature(s, IVSHMEM_MSI)) {
+         if (msix_enabled(pdev)) {
+             msix_notify(pdev, vector);
+@@ -572,6 +625,8 @@ static void ivshmem_add_kvm_msi_virq(IVShmemState *s, int vector,
+     s->msi_vectors[vector].pdev = pdev;
+ }
+ 
++static void init_vm_ids(IVShmemState *s);
++
+ static void setup_interrupt(IVShmemState *s, int vector, Error **errp)
+ {
+     EventNotifier *n = &s->peers[s->vm_id].eventfds[vector];
+@@ -602,6 +657,9 @@ static void setup_interrupt(IVShmemState *s, int vector, Error **errp)
+         /* it will be delayed until msix is enabled, in write_config */
+         IVSHMEM_DPRINTF("with irqfd, delayed until msix enabled\n");
+     }
++    if (vector == 1 && s->self_number){
++        init_vm_ids(s);
++    }
+ }
+ 
+ static void process_msg_shmem(IVShmemState *s, int fd, Error **errp)
+@@ -984,6 +1042,34 @@ static uint32_t ivshmem_read_config(PCIDevice *pdev, uint32_t address,
+     return ret;
+ }
+ 
++static void write_vm_id(IVShmemState *s){
++    int *addr;
++    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
++    addr[s->self_number % 2] = s->vm_id;
++    IVSHMEM_DPRINTF("VM IDs are %d and %d\n", addr[0], addr[1]);
++}
++
++static int read_other_vm_id(IVShmemState *s){
++    int *addr;
++    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
++    return addr[(s->self_number + 1) % 2];
++}
++
++static void init_vm_ids(IVShmemState *s){
++    write_vm_id(s);
++    IVSHMEM_DPRINTF("S pointer is 0x%lx\n", (unsigned long)s);
++    if(s->self_number){
++        // Second vm
++        IVSHMEM_DPRINTF("Second VM Branch\n");
++        s->other_vm_id = read_other_vm_id(s);
++        IVSHMEM_DPRINTF("Other VM ID is %d\n", s->other_vm_id);
++        write_data_to_shm(s, IVSHMEM_NTB_VM_2_INDEX, IVSHMEM_NTB_CONNECT_MSG);
++        event_notifier_set(&s->peers[s->other_vm_id].eventfds[0]);
++        IVSHMEM_DPRINTF("Interrupt for other vm is sended\n");
++    }
++    IVSHMEM_DPRINTF("Started vm with self_number=%d and vm_id=%d\n", s->self_number, s->vm_id);
++}
++
+ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
+ {
+     IVShmemState *s = IVSHMEM_COMMON(dev);
+@@ -1071,6 +1157,8 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
+                      PCI_BASE_ADDRESS_MEM_PREFETCH |
+                      PCI_BASE_ADDRESS_MEM_TYPE_64,
+                      s->ivshmem_bar2);
++    if(!s->self_number)
++        init_vm_ids(s);
+ }
+ 
+ static void ivshmem_exit(PCIDevice *dev)
+@@ -1243,6 +1331,7 @@ static const VMStateDescription ivshmem_doorbell_vmsd = {
+ static Property ivshmem_doorbell_properties[] = {
+     DEFINE_PROP_CHR("chardev", IVShmemState, server_chr),
+     DEFINE_PROP_UINT32("vectors", IVShmemState, vectors, 1),
++    DEFINE_PROP_UINT32("number", IVShmemState, self_number, 0),
+     DEFINE_PROP_BIT("ioeventfd", IVShmemState, features, IVSHMEM_IOEVENTFD,
+                     true),
+     DEFINE_PROP_ON_OFF_AUTO("master", IVShmemState, master, ON_OFF_AUTO_OFF),
+-- 
+2.30.2
+
