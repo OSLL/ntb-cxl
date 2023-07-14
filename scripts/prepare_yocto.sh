@@ -24,6 +24,7 @@ if [ -z "$(bitbake-layers show-layers | grep $LAYER_NAME)" ]; then
 fi
 cp $ROOT_PROJECT_PATH/yocto_files/configs/local.conf ./conf/local.conf
 cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-kernel ../$LAYER_NAME/recipes-kernel
+cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-devtools ../$LAYER_NAME/recipes-devtools
 
 set +x
 
