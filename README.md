@@ -6,7 +6,7 @@
 ## Build VM
 To build VM use command:
 ```
-./run_vm_build.sh
+./run_container.sh
 ```
 
 This command will create folder ```build_vm_image``` and build vm image, Linux kernel image and all necessary dependences in this folder.
@@ -21,3 +21,24 @@ To run VM use command:
 User credentials to login vm:
 - user: ```root```
 - pswd: is not set
+
+## Developing QEMU
+
+You can do it both on your host system and with Docker container.
+
+On your host system, after making sure you have already run `prepare_yocto.sh`,
+execute `qemu_enter_devenv.sh`.
+
+If using Docker, run `./run_container.sh enter_qemu_devenv`.
+
+In both cases script will print path to checked out QEMU sources repository
+relative to selected build directory.
+
+After making changes, commit them.
+
+When you're done, run `qemu_leave_devenv.sh` (or `./run_container.sh leave_qemu_devenv`).
+This will format patches from commits and copy them into this repository to `yocto_files`.
+
+When using host system, you may also try to use various other useful [devtool]
+(https://docs.yoctoproject.org/kernel-dev/common.html#using-devtool-to-patch-the-kernel)
+functions.
