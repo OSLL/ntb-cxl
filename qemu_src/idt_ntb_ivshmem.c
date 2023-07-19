@@ -1,20 +1,14 @@
 /*
- * Inter-VM Shared Memory PCI device.
+ * IDT NTB 89HPES24NT6AG2 device over shared memory
  *
- * Author:
- *      Cam Macdonell <cam@cs.ualberta.ca>
+ * Authors:
+ * - Tinyakov Sergey
+ * - Gavrilov Andrei
  *
- * Based On: cirrus_vga.c
- *          Copyright (c) 2004 Fabrice Bellard
- *          Copyright (c) 2004 Makoto Suzuki (suzu)
+ * Based On: ivshmem.c
+ *          Copyright (c) 20?? Cam Macdonell <cam@cs.ualberta.ca>
  *
- *      and rtl8139.c
- *          Copyright (c) 2006 Igor Kovalenko
- *
- * This code is licensed under the GNU GPL v2.
- *
- * Contributions after 2012-01-13 are licensed under the terms of the
- * GNU GPL, version 2 or (at your option) any later version.
+ * 
  */
 
 #include "qemu/osdep.h"
@@ -49,12 +43,10 @@
 #define IVSHMEM_IDT_OUTREG_INDEX 2
 #define IVSHMEM_NTB_VM_1_INDEX 3
 #define IVSHMEM_NTB_VM_2_INDEX 4
-#define IVSHMEM_NTB_CONNECT_MSG 1
-#define IVSHMEM_NTB_INT_MSG 2
 
 #define IVSHMEM_REG_BAR_SIZE 0x1000
 
-#define IVSHMEM_DEBUG 1
+#define IVSHMEM_DEBUG 0
 #define IVSHMEM_DPRINTF(fmt, ...)                       \
     do {                                                \
         if (IVSHMEM_DEBUG) {                            \
@@ -306,7 +298,6 @@ static void init_vm_ids(IVShmemState *s)
     if(s->self_number){
         /* Second vm */
         s->other_vm_id = read_other_vm_id(s);
-        write_data_to_shm(s, IVSHMEM_NTB_VM_2_INDEX, IVSHMEM_NTB_CONNECT_MSG);
         event_notifier_set(&s->peers[s->other_vm_id].eventfds[0]);
     }
     IVSHMEM_DPRINTF("Started vm with self_number=%d and vm_id=%d\n", s->self_number, s->vm_id);
@@ -339,9 +330,10 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             s->db_inbound = s->db_outbound;
             IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound doorbell\n", val);
             write_outbound_register(s);
-            write_data_to_shm(s, (s->self_number ? IVSHMEM_NTB_VM_2_INDEX : IVSHMEM_NTB_VM_1_INDEX), IVSHMEM_NTB_INT_MSG);
-            event_notifier_set(&s->peers[s->other_vm_id].eventfds[1]);
-            IVSHMEM_DPRINTF("Sended msg interrupt from %d to %d\n", s->vm_id, s->other_vm_id);
+            if (s->other_vm_id != -1){
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[1]);
+                IVSHMEM_DPRINTF("Sended msg interrupt from %d to %d\n", s->vm_id, s->other_vm_id);
+            }
             break;
         default:
             IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
@@ -376,6 +368,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = VALUE_NT_NTINTSTS;
             break;
         case IDT_NT_INMSG0:
+            IVSHMEM_DPRINTF("Readed value 0x%lx from inbound register\n", s->inbound[0]);
             ret = s->inbound[0];
             break;
         default:
@@ -410,12 +403,11 @@ static void ivshmem_vector_notify(void *opaque)
     }
 
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
-    int msg_type = read_data_from_shm(s, (s->self_number ? IVSHMEM_NTB_VM_1_INDEX : IVSHMEM_NTB_VM_2_INDEX));
-    IVSHMEM_DPRINTF("MSG type is %d\n", msg_type);
     if(vector == 0){
         s->other_vm_id = read_other_vm_id(s);
     }else{
         s->inbound[0] = read_outbound_register(s);
+        IVSHMEM_DPRINTF("Readed value 0x%lx from shm outbound register\n", s->inbound[0]);
         intterupt_notify(s, 0);
     }
     return;
@@ -1188,6 +1180,7 @@ static void ivshmem_ntb_idt_init(Object *obj)
     IVShmemState *s = IVSHMEM_NTB_IDT(obj);
 
     s->features |= (1 << IVSHMEM_MSI);
+    s->other_vm_id = -1;
 }
 
 static void ivshmem_ntb_idt_realize(PCIDevice *dev, Error **errp)
