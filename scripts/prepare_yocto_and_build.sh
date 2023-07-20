@@ -33,10 +33,20 @@ if [ -z "$(bitbake-layers show-layers | grep $LAYER_NAME)" ]; then
 fi
 cp $ROOT_PROJECT_PATH/yocto_files/configs/local.conf ./conf/local.conf
 cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-kernel ../$LAYER_NAME/recipes-kernel
+cp -Tr $ROOT_PROJECT_PATH/yocto_files/recipes-devtools ../$LAYER_NAME/recipes-devtools
 
 bitbake -c kernel_configme -f virtual/kernel && \
 bitbake -c compile -f virtual/kernel && \
 bitbake -c deploy virtual/kernel && \
-bitbake core-image-full-cmdline
+bitbake core-image-full-cmdline && \
+bitbake qemu-system-native && \
+bitbake qemu-helper-native
+
+BINS=$BUILD_PATH/bin_files
+mkdir -p $BINS
+cp ./tmp/work/x86_64-linux/qemu-helper-native/1.0-r1/recipe-sysroot-native/usr/bin/qemu-system-x86_64 $BINS/qemu-system-x86_64
+cp ./tmp/deploy/images/qemux86-64/bzImage $BINS/bzImage
+cp ./tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64.ext4 $BINS/first-image.ext4
+cp ./tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64.ext4 $BINS/second-image.ext4
 
 set +x

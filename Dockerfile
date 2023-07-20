@@ -1,7 +1,11 @@
 FROM ubuntu:20.04
 
+ENV DEBIAN_FRONTEND noninteractive
 # Install deps
-RUN apt-get update && apt-get -y install wget git locales chrpath cpio diffstat gawk zstd liblz4-tool python3.8 python3-pip
+RUN apt-get update && \
+    apt-get -y install wget git locales chrpath cpio diffstat gawk zstd liblz4-tool python3.8 python3-pip \
+                       libsdl2-2.0-0 \
+                       qemu-system # For ivshmem-server
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
