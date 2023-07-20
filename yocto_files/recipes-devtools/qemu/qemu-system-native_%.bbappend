@@ -1,3 +1,4 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
-SRC_URI += ""
+SRC_URI += "file://0001-print-hello.patch"
+
