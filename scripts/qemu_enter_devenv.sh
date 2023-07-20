@@ -11,7 +11,7 @@ cd "$YOCTO_WORK_DIR"/poky
 
 source oe-init-build-env build
 
-devtool modify qemu-native || true
+devtool modify --no-overrides qemu-native
 
 set +x
 
