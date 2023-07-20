@@ -11,18 +11,18 @@ cd "$YOCTO_WORK_DIR"/poky
 
 source oe-init-build-env build
 
-devtool finish qemu-native ../meta-ntb-cxl
+devtool finish qemu-system-native ../meta-ntb-cxl
 
 DESTDIR="$ROOT_PROJECT_PATH"/yocto_files/recipes-devtools/qemu
 mkdir -p "$DESTDIR"
 cd ../meta-ntb-cxl/recipes-devtools/qemu
 
 # obsolete patches will remain here, remove them
-rm -r "$DESTDIR"/qemu-native || true
+rm -r "$DESTDIR"/qemu-system-native || true
 
-cp -r qemu-native "$DESTDIR"
-rm "$DESTDIR"/qemu-native/cross.patch || true # why is it there anyway?
-cp qemu-native_%.bbappend "$DESTDIR"
+cp -r qemu-system-native "$DESTDIR"
+rm "$DESTDIR"/qemu-system-native/cross.patch || true # why is it there anyway?
+cp qemu-system-native_%.bbappend "$DESTDIR"
 
 set +x
 

@@ -11,14 +11,14 @@ cd "$YOCTO_WORK_DIR"/poky
 
 source oe-init-build-env build
 
-devtool modify --no-overrides qemu-native
+devtool modify --no-overrides qemu-system-native
 
 set +x
 
 cat <<EOF
 
 ======================================================================
-Your working directory is at poky/build/workspace/sources/qemu-native.
+Your working directory is at poky/build/workspace/sources/qemu.
 Make your changes, commit them and run qemu_leave_devenv.sh.
 ======================================================================
 
