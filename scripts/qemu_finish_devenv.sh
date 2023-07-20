@@ -18,10 +18,10 @@ mkdir -p "$DESTDIR"
 cd ../meta-ntb-cxl/recipes-devtools/qemu
 
 # obsolete patches will remain here, remove them
-rm -r "$DESTDIR"/qemu-native
+rm -r "$DESTDIR"/qemu-native || true
 
 cp -r qemu-native "$DESTDIR"
-rm "$DESTDIR"/qemu-native/cross.patch # why is it there anyway?
+rm "$DESTDIR"/qemu-native/cross.patch || true # why is it there anyway?
 cp qemu-native_%.bbappend "$DESTDIR"
 
 set +x
