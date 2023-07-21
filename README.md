@@ -43,10 +43,10 @@ and automatically commits and squashes changes.
 
 After making changes, commit them.
 
-When you're done, run `qemu_leave_devenv.sh` (or `./run_container.sh leave_qemu_devenv`).
+When you're done, run `qemu_finish_devenv.sh` (or `./run_container.sh finish_qemu_devenv`).
 This will format patches from commits and copy them into this repository to `yocto_files`.
 
-As with `build`, both `enter_qemu_devenv` and `leave_qemu_devenv` support
+As with `build`, both `enter_qemu_devenv` and `finish_qemu_devenv` support
 specifying custom build directory,
 and the same does `prepare_yocto.sh` and `qemu_enter_devenv.sh`.
 
