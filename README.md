@@ -3,17 +3,18 @@
 ## Requirements
 -- [Docker](https://docs.docker.com/engine/install/)
 
-## Build VM
-To build VM use command:
-```
-./run_container.sh
-```
-The full syntax is:
-```
-./run_container.sh build <bulid_directory>
-```
+## Using container
 
-This command will create folder ```build_vm_image``` and build vm image, Linux kernel image and all necessary dependences in this folder.
+`run_container.sh` a unified starting point for the Docker container. The general syntax is:
+```
+./run_container.sh <command> <bulid_directory>
+```
+where `<command>` is currently one of `build`, `enter_qemu_devenv` or `finish_qemu_devenv`.
+If no command is given, `build` is assumed.
+
+## Build VM
+
+The `build` command will create folder ```build_vm_image``` and build vm image, Linux kernel image and all necessary dependences in this folder.
 
 ## Run VM
 
