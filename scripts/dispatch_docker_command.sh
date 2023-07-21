@@ -7,8 +7,8 @@ case "$1" in
 	enter_qemu_devenv)
 		scripts/prepare_yocto.sh "$BUILD_PATH" && scripts/qemu_enter_devenv.sh "$BUILD_PATH"
 		;;
-	leave_qemu_devenv)
-		scripts/qemu_leave_devenv.sh "$BUILD_PATH"
+	finish_qemu_devenv)
+		scripts/qemu_finish_devenv.sh "$BUILD_PATH"
 		;;
 	*)
 		echo "unknown command: $1"
