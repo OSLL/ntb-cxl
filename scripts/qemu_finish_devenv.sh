@@ -21,7 +21,6 @@ cd ../meta-ntb-cxl/recipes-devtools/qemu
 rm -r "$DESTDIR"/qemu-system-native || true
 
 cp -r qemu-system-native "$DESTDIR"
-rm "$DESTDIR"/qemu-system-native/cross.patch || true # why is it there anyway?
 cp qemu-system-native_%.bbappend "$DESTDIR"
 
 set +x
