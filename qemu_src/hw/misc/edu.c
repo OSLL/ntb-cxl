@@ -267,8 +267,6 @@ static void edu_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     case 0x20:
         if (val & EDU_STATUS_IRQFACT) {
             qatomic_or(&edu->status, EDU_STATUS_IRQFACT);
-            /* Order check of the COMPUTING flag after setting IRQFACT.  */
-            smp_mb__after_rmw();
         } else {
             qatomic_and(&edu->status, ~EDU_STATUS_IRQFACT);
         }
@@ -351,9 +349,6 @@ static void *edu_fact_thread(void *opaque)
         qemu_mutex_unlock(&edu->thr_mutex);
         qatomic_and(&edu->status, ~EDU_STATUS_COMPUTING);
 
-        /* Clear COMPUTING flag before checking IRQFACT.  */
-        smp_mb__after_rmw();
-
         if (qatomic_read(&edu->status) & EDU_STATUS_IRQFACT) {
             qemu_mutex_lock_iothread();
             edu_raise_irq(edu, FACT_IRQ);
@@ -385,7 +380,7 @@ static void pci_edu_realize(PCIDevice *pdev, Error **errp)
     memory_region_init_io(&edu->mmio, OBJECT(edu), &edu_mmio_ops, edu,
                     "edu-mmio", 1 * MiB);
     pci_register_bar(pdev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &edu->mmio);
-    fprintf(stderr, "Hello QEMU from edu device\n");
+    fprintf(stderr, "Hello from QEMU Edu device!\n");
 }
 
 static void pci_edu_uninit(PCIDevice *pdev)
