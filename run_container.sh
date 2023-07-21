@@ -2,17 +2,14 @@
 
 if [ "$1" ]; then
     CMD="$1"
-
-    if ! [ "$2" ]; then
-        echo -e "\e[1;33mBuild dir is not provided, using 'build_vm_image' dir\e[0m"
-        BUILD_FOLDER_NAME=build_vm_image/
-    else
-        BUILD_FOLDER_NAME="$2"
-    fi
 else
     echo -e "\e[1;33mCommand is not provided, assuming 'build'\e[0m"
     CMD=build
+fi
 
+if [ "$2" ]; then
+    BUILD_FOLDER_NAME="$2"
+else
     echo -e "\e[1;33mBuild dir is not provided, using 'build_vm_image' dir\e[0m"
     BUILD_FOLDER_NAME=build_vm_image/
 fi
