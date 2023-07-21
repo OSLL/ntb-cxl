@@ -17,9 +17,9 @@ set +x
 
 cat <<EOF
 
-======================================================================
-Your working directory is at poky/build/workspace/sources/qemu.
+========================================================================
+Working directory is at poky/build/workspace/sources/qemu-system-native.
 Make your changes, commit them and run qemu_leave_devenv.sh.
-======================================================================
+========================================================================
 
 EOF
