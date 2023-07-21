@@ -38,6 +38,9 @@ If using Docker, run `./run_container.sh enter_qemu_devenv`.
 In both cases script will print path to checked out QEMU sources repository
 relative to selected build directory.
 
+`qemu_enter_devenv.sh` script also copies all files from qemu_src to working repository
+and automatically commits and squashes changes.
+
 After making changes, commit them.
 
 When you're done, run `qemu_leave_devenv.sh` (or `./run_container.sh leave_qemu_devenv`).
