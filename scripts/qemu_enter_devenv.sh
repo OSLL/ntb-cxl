@@ -13,14 +13,29 @@ source oe-init-build-env build
 
 devtool modify --no-overrides qemu-system-native
 
-# Sort of a weird hack, don't have any ideas about why things are like that
 cd workspace/sources/qemu-system-native
+
+# Sort of a weird hack, don't have any ideas about why things are like that
 git config --local user.name a
 git config --local user.email a
 {
 	rm -r .git/rebase-apply
 	git am
 } || true
+
+cp -r "$ROOT_PROJECT_PATH"/qemu_src/* .
+if [ "$(git status -s)" ]; then
+	git add .
+	commit_msg="SERVICE: add files from qemu_src"
+	prev_commit="$(git log --oneline --grep="$commit_msg" | head -n1 | cut -d' ' -f1)"
+	if [ "$prev_commit" ]; then
+		git commit --fixup="$prev_commit"
+		git rebase --autosquash "${prev_commit}~"
+	else
+		git commit -m "$commit_msg"
+	fi
+fi
+
 cd -
 
 set +x
