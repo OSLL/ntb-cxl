@@ -19,8 +19,7 @@ cd workspace/sources/qemu-system-native
 git config --local user.name a
 git config --local user.email a
 {
-	rm -r .git/rebase-apply
-	git am
+	git am --abort
 } || true
 
 cp -r "$ROOT_PROJECT_PATH"/qemu_src/* .
