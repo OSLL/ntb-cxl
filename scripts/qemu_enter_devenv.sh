@@ -29,7 +29,7 @@ if [ "$(git status -s)" ]; then
 	prev_commit="$(git log --oneline --grep="$commit_msg" | head -n1 | cut -d' ' -f1)"
 	if [ "$prev_commit" ]; then
 		git commit --fixup="$prev_commit"
-		git rebase --autosquash "${prev_commit}~"
+		GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash "${prev_commit}~"
 	else
 		git commit -m "$commit_msg"
 	fi
