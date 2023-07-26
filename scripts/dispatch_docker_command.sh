@@ -16,6 +16,9 @@ case "$1" in
 	run_vm)
 		scripts/run_vm.sh "$BUILD_PATH"
 		;;
+	run_vms)
+		scripts/run_vms.sh "$BUILD_PATH"
+		;;
 	*)
 		echo "unknown command: $1"
 		exit 1
