@@ -10,6 +10,9 @@ case "$1" in
 	finish_qemu_devenv)
 		scripts/qemu_finish_devenv.sh "$BUILD_PATH"
 		;;
+	shell)
+		bash
+		;;
 	*)
 		echo "unknown command: $1"
 		exit 1
