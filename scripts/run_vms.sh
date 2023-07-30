@@ -18,27 +18,47 @@ qemu=tmp/work/x86_64-linux/qemu-helper-native/1.0-r1/recipe-sysroot-native/usr/b
 drive=tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64-20230726131105.rootfs.ext4
 kernel=tmp/deploy/images/qemux86-64/bzImage
 
-"$qemu" \
-	-usb -device usb-tablet -usb -device usb-kbd \
-	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
-	-serial telnet::8000,server,nowait -nographic -monitor null \
-	-drive file="$drive",if=virtio,format=raw \
-	-kernel "$kernel" \
-	-append 'root=/dev/vda rw  ip=dhcp oprofile.timer=1 tsc=reliable no_timer_check rcupdate.rcu_expedited=1' \
-	&
-
 cp -r tmp/deploy/images/qemux86-64 tmp/deploy/images/qemux86-64_2
 drive2="${drive/qemux86-64\//qemux86-64_2/}"
 kernel2="${kernel/qemux86-64\//qemux86-64_2/}"
 
+COMMON_OPTIONS_DEFAULT="-usb -device usb-tablet -usb -device usb-kbd \
+-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
+-nographic -monitor null"
+VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait"
+VM2_OPTIONS_DEFAULT="-serial telnet::8001,server,nowait"
+
+if [ "$COMMON_OPTIONS_OVERRIDE" ]; then
+	COMMON_OPTIONS="$COMMON_OPTIONS_OVERRIDE"
+else
+	COMMON_OPTIONS="$COMMON_OPTIONS_DEFAULT $COMMON_OPTIONS"
+fi
+
+if [ "$VM1_OPTIONS_OVERRIDE" ]; then
+	VM1_OPTIONS="$VM1_OPTIONS_OVERRIDE"
+else
+	VM1_OPTIONS="$VM1_OPTIONS_DEFAULT $VM1_OPTIONS"
+fi
+
+if [ "$VM2_OPTIONS_OVERRIDE" ]; then
+	VM2_OPTIONS="$VM2_OPTIONS_OVERRIDE"
+else
+	VM2_OPTIONS="$VM2_OPTIONS_DEFAULT $VM2_OPTIONS"
+fi
+
 "$qemu" \
-	-usb -device usb-tablet -usb -device usb-kbd \
-	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
-	-serial telnet::8001,server,nowait -nographic -monitor null \
+	-drive file="$drive",if=virtio,format=raw \
+	-kernel "$kernel" \
+	-append 'root=/dev/vda rw  ip=dhcp oprofile.timer=1 tsc=reliable no_timer_check rcupdate.rcu_expedited=1' \
+	"$COMMON_OPTIONS" \
+	"$VM1_OPTIONS" &
+
+"$qemu" \
 	-drive file="$drive2",if=virtio,format=raw \
 	-kernel "$kernel2" \
 	-append 'root=/dev/vda rw  ip=dhcp oprofile.timer=1 tsc=reliable no_timer_check rcupdate.rcu_expedited=1' \
-	&
+	"$COMMON_OPTIONS" \
+	"$VM2_OPTIONS" &
 
 wait
 
