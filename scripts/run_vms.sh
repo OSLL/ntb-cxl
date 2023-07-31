@@ -36,7 +36,7 @@ COMMON_OPTIONS_DEFAULT="-usb -device usb-tablet -usb -device usb-kbd \
 	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
 	-nographic -monitor null \
 	-append 'root=/dev/vda rw  ip=dhcp oprofile.timer=1 tsc=reliable no_timer_check rcupdate.rcu_expedited=1'"
-VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait"
+VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait -append ivshmem_master"
 VM2_OPTIONS_DEFAULT="-serial telnet::8001,server,nowait"
 
 if [ "$COMMON_OPTIONS_OVERRIDE" ]; then
