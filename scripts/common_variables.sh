@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-set -x
 set -e
 
 ROOT_PROJECT_PATH="$PWD"
@@ -18,5 +17,3 @@ if [ ! -d $YOCTO_WORK_DIR ]; then
 fi
 
 FULL_LAYER_NAME="$YOCTO_WORK_DIR"/poky/"$LAYER_NAME"
-
-set +x
