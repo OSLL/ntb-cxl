@@ -24,8 +24,8 @@ drive2="${drive/qemux86-64\//qemux86-64_2/}"
 kernel2="${kernel/qemux86-64\//qemux86-64_2/}"
 
 COMMON_OPTIONS_DEFAULT="-usb -device usb-tablet -usb -device usb-kbd \
--cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
--nographic -monitor null"
+	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
+	-nographic -monitor null"
 VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait"
 VM2_OPTIONS_DEFAULT="-serial telnet::8001,server,nowait"
 
