@@ -23,6 +23,15 @@ cp -r tmp/deploy/images/qemux86-64 tmp/deploy/images/qemux86-64_2
 drive2="${drive/qemux86-64\//qemux86-64_2/}"
 kernel2="${kernel/qemux86-64\//qemux86-64_2/}"
 
+IVSHMEM_COMMON_OPTIONS_DEFAULT="-device ivshmem-doorbell,vectors=2,chardev=ivshmem \
+	-chardev socket,path=/tmp/ivshmem_socket,id=ivshmem"
+
+if [ "$IVSHMEM_COMMON_OPTIONS_OVERRIDE" ]; then
+	IVSHMEM_COMMON_OPTIONS="$IVSHMEM_COMMON_OPTIONS_OVERRIDE"
+else
+	IVSHMEM_COMMON_OPTIONS="$IVSHMEM_COMMON_OPTIONS_DEFAULT $IVSHMEM_COMMON_OPTIONS"
+fi
+
 COMMON_OPTIONS_DEFAULT="-usb -device usb-tablet -usb -device usb-kbd \
 	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
 	-nographic -monitor null \
@@ -31,9 +40,9 @@ VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait"
 VM2_OPTIONS_DEFAULT="-serial telnet::8001,server,nowait"
 
 if [ "$COMMON_OPTIONS_OVERRIDE" ]; then
-	COMMON_OPTIONS="$COMMON_OPTIONS_OVERRIDE"
+	COMMON_OPTIONS="$COMMON_OPTIONS_OVERRIDE $IVSHMEM_COMMON_OPTIONS"
 else
-	COMMON_OPTIONS="$COMMON_OPTIONS_DEFAULT $COMMON_OPTIONS"
+	COMMON_OPTIONS="$COMMON_OPTIONS_DEFAULT $COMMON_OPTIONS $IVSHMEM_COMMON_OPTIONS"
 fi
 
 if [ "$VM1_OPTIONS_OVERRIDE" ]; then
