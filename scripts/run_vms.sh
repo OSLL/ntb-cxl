@@ -53,15 +53,15 @@ fi
 	-drive file="$drive",if=virtio,format=raw \
 	-kernel "$kernel" \
 	-append 'root=/dev/vda rw  ip=dhcp oprofile.timer=1 tsc=reliable no_timer_check rcupdate.rcu_expedited=1' \
-	"$COMMON_OPTIONS" \
-	"$VM1_OPTIONS" &
+	$COMMON_OPTIONS \
+	$VM1_OPTIONS &
 
 "$qemu" \
 	-drive file="$drive2",if=virtio,format=raw \
 	-kernel "$kernel2" \
 	-append 'root=/dev/vda rw  ip=dhcp oprofile.timer=1 tsc=reliable no_timer_check rcupdate.rcu_expedited=1' \
-	"$COMMON_OPTIONS" \
-	"$VM2_OPTIONS" &
+	$COMMON_OPTIONS \
+	$VM2_OPTIONS &
 
 wait
 
