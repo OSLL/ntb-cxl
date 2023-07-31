@@ -14,6 +14,7 @@ source oe-init-build-env build
 #runqemu qemux86-64 nographic slirp
 
 qemu=tmp/work/x86_64-linux/qemu-helper-native/1.0-r1/recipe-sysroot-native/usr/bin/qemu-system-x86_64
+ivshmem_server=tmp/work/x86_64-linux/qemu-system-native/7.1.0-r0/qemu-7.1.0/contrib/ivshmem-server/ivshmem-server
 
 drive=tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64-20230726131105.rootfs.ext4
 kernel=tmp/deploy/images/qemux86-64/bzImage
@@ -45,6 +46,8 @@ if [ "$VM2_OPTIONS_OVERRIDE" ]; then
 else
 	VM2_OPTIONS="$VM2_OPTIONS_DEFAULT $VM2_OPTIONS"
 fi
+
+"$ivshmem_server" -m . -l 1M -n 2 -F &
 
 "$qemu" \
 	-drive file="$drive",if=virtio,format=raw \
