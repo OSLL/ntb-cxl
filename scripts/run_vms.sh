@@ -13,7 +13,7 @@ source oe-init-build-env build
 
 #runqemu qemux86-64 nographic slirp
 
-qemu=tmp/work/x86_64-linux/qemu-helper-native/1.0-r1/recipe-sysroot-native/usr/bin/qemu-system-x86_64
+qemu=tmp/work/x86_64-linux/qemu-system-native/7.1.0-r0/qemu-7.1.0/qemu-system-x86_64
 ivshmem_server=tmp/work/x86_64-linux/qemu-system-native/7.1.0-r0/qemu-7.1.0/contrib/ivshmem-server/ivshmem-server
 
 drive=tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64-20230726131105.rootfs.ext4
