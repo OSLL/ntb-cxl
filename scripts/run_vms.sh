@@ -16,7 +16,7 @@ source oe-init-build-env build
 qemu=tmp/work/x86_64-linux/qemu-system-native/7.1.0-r0/qemu-7.1.0/qemu-system-x86_64
 ivshmem_server=tmp/work/x86_64-linux/qemu-system-native/7.1.0-r0/qemu-7.1.0/contrib/ivshmem-server/ivshmem-server
 
-drive=tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64-20230726131105.rootfs.ext4
+drive=tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64.ext4
 kernel=tmp/deploy/images/qemux86-64/bzImage
 
 cp -r tmp/deploy/images/qemux86-64 tmp/deploy/images/qemux86-64_2
