@@ -11,8 +11,8 @@ cd "$YOCTO_WORK_DIR"/poky/build
 
 #runqemu qemux86-64 nographic slirp
 
-qemu=tmp/work/x86_64-linux/qemu-system-native/7.1.0-r0/qemu-7.1.0/qemu-system-x86_64
-ivshmem_server=tmp/work/x86_64-linux/qemu-system-native/7.1.0-r0/qemu-7.1.0/contrib/ivshmem-server/ivshmem-server
+qemu="$(ls tmp/work/x86_64-linux/qemu-system-native/*/*/qemu-system-x86_64 | head -n1)"
+ivshmem_server="$(ls tmp/work/x86_64-linux/qemu-system-native/*/*/contrib/ivshmem-server/ivshmem-server | head -n1)"
 
 drive=tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64.ext4
 kernel=tmp/deploy/images/qemux86-64/bzImage
