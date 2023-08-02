@@ -1,7 +1,8 @@
 /*
- * Levex's PCI device
+ * MSI interrupts PCI device example
  *
  * Copyright (c) 2014 Levente Kurusa <levex@linux.com>
+ * Copyright (c) 2023 Maxim Karasev <mxkrsv@disroot.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,10 +17,11 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "qemu/event_notifier.h"
-#include "qemu/osdep.h"
 
 typedef struct PCILevDevState {
     PCIDevice parent_obj;
@@ -32,7 +34,7 @@ typedef struct PCILevDevState {
     MemoryRegion portio;
 } PCILevDevState;
 
-#define TYPE_PCI_LEV_DEV "pci-levdev"
+#define TYPE_PCI_LEV_DEV "msi-example"
 
 #define PCI_LEV_DEV(obj) \
     OBJECT_CHECK(PCILevDevState, (obj), TYPE_PCI_LEV_DEV)
@@ -89,7 +91,7 @@ static const MemoryRegionOps pci_levdev_mmio_ops = {
     },
 };
 
-static int pci_levdev_init(PCIDevice *pci_dev)
+static int pci_levdev_realize(PCIDevice *pci_dev, Error **errp)
 {
     PCILevDevState *d = PCI_LEV_DEV(pci_dev);
     uint8_t *pci_conf;
@@ -112,7 +114,7 @@ static int pci_levdev_init(PCIDevice *pci_dev)
 }
 
 static void
-pci_levdev_uninit(PCIDevice *dev)
+pci_levdev_unrealize(PCIDevice *dev)
 {
     //PCILevDevState *d = PCI_LEV_DEV(dev);
     printf("unloaded lev pci\n");
@@ -128,8 +130,8 @@ static void pci_levdev_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->init = pci_levdev_init;
-    k->exit = pci_levdev_uninit;
+    k->realize = pci_levdev_realize;
+    k->exit = pci_levdev_unrealize;
     k->vendor_id = 0x1337;
     k->device_id = 0x0001;
     k->revision = 0x00;
@@ -144,6 +146,10 @@ static const TypeInfo pci_lev_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCILevDevState),
     .class_init    = pci_levdev_class_init,
+    .interfaces    = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void pci_lev_register_types(void)

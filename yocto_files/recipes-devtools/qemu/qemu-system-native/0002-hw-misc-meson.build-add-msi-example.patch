@@ -1,0 +1,39 @@
+From 325b97cd56f0175682236c06aae059f19e4b9961 Mon Sep 17 00:00:00 2001
+From: OpenEmbedded <oe.patch@oe>
+Date: Wed, 2 Aug 2023 15:56:04 +0300
+Subject: [PATCH] hw/misc/msi-example: add to build
+
+From: a <a>
+
+---
+ hw/misc/Kconfig     | 5 +++++
+ hw/misc/meson.build | 1 +
+ 2 files changed, 6 insertions(+)
+
+diff --git a/hw/misc/Kconfig b/hw/misc/Kconfig
+index cbabe9f78..0ad115610 100644
+--- a/hw/misc/Kconfig
++++ b/hw/misc/Kconfig
+@@ -34,6 +34,11 @@ config EDU
+     default y if TEST_DEVICES
+     depends on PCI && MSI_NONBROKEN
+ 
++config MSI_EXAMPLE
++    bool
++    default y if TEST_DEVICES
++    depends on PCI && MSI_NONBROKEN
++
+ config PCA9552
+     bool
+     depends on I2C
+diff --git a/hw/misc/meson.build b/hw/misc/meson.build
+index 95268eddc..2a89611d8 100644
+--- a/hw/misc/meson.build
++++ b/hw/misc/meson.build
+@@ -1,5 +1,6 @@
+ softmmu_ss.add(when: 'CONFIG_APPLESMC', if_true: files('applesmc.c'))
+ softmmu_ss.add(when: 'CONFIG_EDU', if_true: files('edu.c'))
++softmmu_ss.add(when: 'CONFIG_MSI_EXAMPLE', if_true: files('msi-example.c'))
+ softmmu_ss.add(when: 'CONFIG_FW_CFG_DMA', if_true: files('vmcoreinfo.c'))
+ softmmu_ss.add(when: 'CONFIG_ISA_DEBUG', if_true: files('debugexit.c'))
+ softmmu_ss.add(when: 'CONFIG_ISA_TESTDEV', if_true: files('pc-testdev.c'))
