@@ -42,8 +42,8 @@ COMMON_OPTIONS_DEFAULT="-usb -device usb-tablet -usb -device usb-kbd \
 	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
 	-nographic -monitor null"
 
-VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait"
-VM2_OPTIONS_DEFAULT="-serial telnet::8001,server,nowait"
+VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait -net nic -net user,hostfwd=tcp::7000-:22"
+VM2_OPTIONS_DEFAULT="-serial telnet::8001,server,nowait -net nic -net user,hostfwd=tcp::7001-:22"
 
 if [ "$COMMON_OPTIONS_OVERRIDE" ]; then
 	COMMON_OPTIONS="$COMMON_OPTIONS_OVERRIDE"
