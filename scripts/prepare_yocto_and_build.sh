@@ -34,7 +34,7 @@ fi
 cp $ROOT_PROJECT_PATH/yocto_files/configs/local.conf ./conf/local.conf
 cp -rT $ROOT_PROJECT_PATH/yocto_files/recipes-kernel ../$LAYER_NAME/recipes-kernel
 cp -rT $ROOT_PROJECT_PATH/yocto_files/recipes-devtools ../$LAYER_NAME/recipes-devtools
-cp -rT $ROOT_PROJECT_PATH/yocto_files/recipes-connectivity ../$LAYER_NAME/recipes-connectivity
+# cp -rT $ROOT_PROJECT_PATH/yocto_files/recipes-connectivity ../$LAYER_NAME/recipes-connectivity
 
 bitbake -c kernel_configme -f virtual/kernel && \
 bitbake -c compile -f virtual/kernel && \
