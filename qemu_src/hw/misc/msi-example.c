@@ -21,110 +21,45 @@
 #include "qemu/osdep.h"
 
 #include "hw/hw.h"
+#include "hw/pci/msi.h"
 #include "hw/pci/pci.h"
 #include "qemu/event_notifier.h"
 
 typedef struct PCIMsiExampleState {
     PCIDevice parent_obj;
-
-    int pos;
-    char *buf;
-    int buflen;
-
-    MemoryRegion mmio;
-    MemoryRegion portio;
 } PCIMsiExampleState;
 
 #define MSI_EXAMPLE_PCI_DEVICE_TYPE "msi-example"
 
 #define MSI_EXAMPLE_DEV(obj) OBJECT_CHECK(PCIMsiExampleState, (obj), MSI_EXAMPLE_PCI_DEVICE_TYPE)
 
-static uint64_t msi_example_read(void *opaque, hwaddr addr, unsigned size)
-{
-    PCIMsiExampleState *d = opaque;
-
-    if (addr == 0)
-        return d->buf[d->pos++];
-    else
-        return d->buflen;
-}
-
-static void msi_example_mmio_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
-{
-
-    PCIMsiExampleState *d = opaque;
-
-    switch (addr) {
-    case 0:
-        /* write byte */
-        if (!d->buf)
-            break;
-        if (d->pos >= d->buflen)
-            break;
-        d->buf[d->pos++] = (uint8_t)val;
-        break;
-    case 1:
-        /* reset pos */
-        d->pos = 0;
-        break;
-    case 2:
-        /* set buffer length */
-        d->buflen = val + 1;
-        g_free(d->buf);
-        d->buf = g_malloc(d->buflen);
-        break;
-    }
-
-    return;
-}
-
-static const MemoryRegionOps msi_example_mmio_ops = {
-    .read = msi_example_read,
-    .write = msi_example_mmio_write,
-    .endianness = DEVICE_LITTLE_ENDIAN,
-    .impl =
-        {
-            .min_access_size = 1,
-            .max_access_size = 1,
-        },
-};
-
-static int msi_example_realize(PCIDevice *pci_dev, Error **errp)
+static void msi_example_realize(PCIDevice *pci_dev, Error **errp)
 {
     PCIMsiExampleState *d = MSI_EXAMPLE_DEV(pci_dev);
     uint8_t *pci_conf;
 
     pci_conf = pci_dev->config;
 
-    pci_conf[PCI_INTERRUPT_PIN] = 0; /* no interrupt pin */
+    pci_config_set_interrupt_pin(pci_conf, 1);
 
-    memory_region_init_io(&d->mmio, OBJECT(d), &msi_example_mmio_ops, d, "msi-example-mmio", 128);
-    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+    if (msi_init(pci_dev, 0, 1, true, false, errp)) {
+        return;
+    }
 
-    d->pos = 0;
-    d->buf = g_malloc(14);
-    memcpy(d->buf, "Hello, world!\n", 14);
-    d->buflen = 14;
-    printf("Loaded MSI pci device example\n");
-
-    return 0;
+    printf("msi-example: loaded\n");
 }
 
-static void msi_example_unrealize(PCIDevice *dev)
+static void msi_example_unrealize(PCIDevice *pdev)
 {
-    // PCIMsiExampleState *d = MSI_EXAMPLE_DEV(dev);
-    printf("Unloaded MSI pci device example\n");
+    msi_uninit(pdev);
+
+    printf("msi-example: unloaded\n");
 }
 
-static void qdev_msi_example_reset(DeviceState *dev)
+static void msi_example_class_init(ObjectClass *class, void *data)
 {
-    // PCIMsiExampleState *d = MSI_EXAMPLE_DEV(dev);
-}
-
-static void msi_example_class_init(ObjectClass *klass, void *data)
-{
-    DeviceClass *dc = DEVICE_CLASS(klass);
-    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+    DeviceClass *dc = DEVICE_CLASS(class);
+    PCIDeviceClass *k = PCI_DEVICE_CLASS(class);
 
     k->realize = msi_example_realize;
     k->exit = msi_example_unrealize;
@@ -132,25 +67,23 @@ static void msi_example_class_init(ObjectClass *klass, void *data)
     k->device_id = 0x0001;
     k->revision = 0x00;
     k->class_id = PCI_CLASS_OTHERS;
-    dc->desc = "Example PCI device that uses MSI interrupts";
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
-    dc->reset = qdev_msi_example_reset;
 }
-
-static const TypeInfo msi_example_info = {
-    .name = MSI_EXAMPLE_PCI_DEVICE_TYPE,
-    .parent = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCIMsiExampleState),
-    .class_init = msi_example_class_init,
-    .interfaces =
-        (InterfaceInfo[]){
-            {INTERFACE_CONVENTIONAL_PCI_DEVICE},
-            {},
-        },
-};
 
 static void msi_example_register_types(void)
 {
+    const TypeInfo msi_example_info = {
+        .name = MSI_EXAMPLE_PCI_DEVICE_TYPE,
+        .parent = TYPE_PCI_DEVICE,
+        .instance_size = sizeof(PCIMsiExampleState),
+        .class_init = msi_example_class_init,
+        .interfaces =
+            (InterfaceInfo[]){
+                {INTERFACE_CONVENTIONAL_PCI_DEVICE},
+                {},
+            },
+    };
+
     type_register_static(&msi_example_info);
 }
 
