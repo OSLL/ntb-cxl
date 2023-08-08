@@ -24,14 +24,28 @@
 #include "hw/pci/msi.h"
 #include "hw/pci/pci.h"
 #include "qemu/event_notifier.h"
+#include "qemu/timer.h"
 
 typedef struct PCIMsiExampleState {
     PCIDevice parent_obj;
+
+    QEMUTimer timer;
 } PCIMsiExampleState;
 
 #define MSI_EXAMPLE_PCI_DEVICE_TYPE "msi-example"
 
 #define MSI_EXAMPLE_DEV(obj) OBJECT_CHECK(PCIMsiExampleState, (obj), MSI_EXAMPLE_PCI_DEVICE_TYPE)
+
+static void msi_example_timer(void *opaque)
+{
+    PCIMsiExampleState *d = opaque;
+
+    msi_notify(&d->parent_obj, 0);
+
+    printf("msi-example: sent msi irq\n");
+
+    timer_mod(&d->timer, 1000);
+}
 
 static void msi_example_realize(PCIDevice *pci_dev, Error **errp)
 {
@@ -46,11 +60,17 @@ static void msi_example_realize(PCIDevice *pci_dev, Error **errp)
         return;
     }
 
+    timer_init_ms(&d->timer, QEMU_CLOCK_VIRTUAL, msi_example_timer, d);
+    timer_mod(&d->timer, 1000);
+
     printf("msi-example: loaded\n");
 }
 
 static void msi_example_unrealize(PCIDevice *pdev)
 {
+    PCIMsiExampleState *d = MSI_EXAMPLE_DEV(pdev);
+
+    timer_del(&d->timer);
     msi_uninit(pdev);
 
     printf("msi-example: unloaded\n");
