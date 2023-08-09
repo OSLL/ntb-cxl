@@ -27,4 +27,6 @@ WORKDIR $PROJECT_PATH
 ADD ./scripts $PROJECT_PATH/scripts 
 ADD ./yocto_files $PROJECT_PATH/yocto_files
 
-CMD bash $PROJECT_PATH/scripts/prepare_yocto_and_build.sh $BUILD_PATH
+ENTRYPOINT ["/home/user/project/scripts/dispatch_docker_command.sh"]
+
+CMD ["build"]
