@@ -44,7 +44,7 @@ static void msi_example_timer(void *opaque)
 
     printf("msi-example: sent msi irq\n");
 
-    timer_mod(&d->timer, 1000);
+    timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 1000);
 }
 
 static void msi_example_realize(PCIDevice *pci_dev, Error **errp)
@@ -61,7 +61,7 @@ static void msi_example_realize(PCIDevice *pci_dev, Error **errp)
     }
 
     timer_init_ms(&d->timer, QEMU_CLOCK_VIRTUAL, msi_example_timer, d);
-    timer_mod(&d->timer, 1000);
+    timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 5000);
 
     printf("msi-example: loaded\n");
 }

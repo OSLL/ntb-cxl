@@ -1,4 +1,4 @@
-From ce21617370a4b90d9d4980122eb629e0d3764fae Mon Sep 17 00:00:00 2001
+From a20108439d10d799e134ee700eeea1f4a9cbea1c Mon Sep 17 00:00:00 2001
 From: OpenEmbedded <oe.patch@oe>
 Date: Wed, 2 Aug 2023 12:44:28 +0000
 Subject: [PATCH] SERVICE: add files from qemu_src
@@ -27,19 +27,41 @@ From: OpenEmbedded <oe.patch@oe>
 
 From: OpenEmbedded <oe.patch@oe>
 
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
+From: OpenEmbedded <oe.patch@oe>
+
 From: a <a>
 
 ---
- hw/misc/msi-example.c | 90 +++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 90 insertions(+)
+ hw/misc/msi-example.c | 110 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 110 insertions(+)
  create mode 100644 hw/misc/msi-example.c
 
 diff --git a/hw/misc/msi-example.c b/hw/misc/msi-example.c
 new file mode 100644
-index 000000000..2789b5cdd
+index 000000000..9137b409e
 --- /dev/null
 +++ b/hw/misc/msi-example.c
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,110 @@
 +/*
 + * MSI interrupts PCI device example
 + *
@@ -66,14 +88,28 @@ index 000000000..2789b5cdd
 +#include "hw/pci/msi.h"
 +#include "hw/pci/pci.h"
 +#include "qemu/event_notifier.h"
++#include "qemu/timer.h"
 +
 +typedef struct PCIMsiExampleState {
 +    PCIDevice parent_obj;
++
++    QEMUTimer timer;
 +} PCIMsiExampleState;
 +
 +#define MSI_EXAMPLE_PCI_DEVICE_TYPE "msi-example"
 +
 +#define MSI_EXAMPLE_DEV(obj) OBJECT_CHECK(PCIMsiExampleState, (obj), MSI_EXAMPLE_PCI_DEVICE_TYPE)
++
++static void msi_example_timer(void *opaque)
++{
++    PCIMsiExampleState *d = opaque;
++
++    msi_notify(&d->parent_obj, 0);
++
++    printf("msi-example: sent msi irq\n");
++
++    timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 1000);
++}
 +
 +static void msi_example_realize(PCIDevice *pci_dev, Error **errp)
 +{
@@ -88,11 +124,17 @@ index 000000000..2789b5cdd
 +        return;
 +    }
 +
++    timer_init_ms(&d->timer, QEMU_CLOCK_VIRTUAL, msi_example_timer, d);
++    timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 5000);
++
 +    printf("msi-example: loaded\n");
 +}
 +
 +static void msi_example_unrealize(PCIDevice *pdev)
 +{
++    PCIMsiExampleState *d = MSI_EXAMPLE_DEV(pdev);
++
++    timer_del(&d->timer);
 +    msi_uninit(pdev);
 +
 +    printf("msi-example: unloaded\n");
