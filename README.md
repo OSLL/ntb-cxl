@@ -47,6 +47,9 @@ After making changes, commit them.
 When you're done, run `qemu_finish_devenv.sh` (or `./run_container.sh finish_qemu_devenv`).
 This will format patches from commits and copy them into this repository to `yocto_files`.
 
+For any changes to take effect, qemu should be rebuilt
+(`./run_container.sh build` or `scripts/prepare_yocto.sh && scripts/build_yocto.sh`).
+
 As with `build`, both `enter_qemu_devenv` and `finish_qemu_devenv` support
 specifying custom build directory,
 and the same does `prepare_yocto.sh` and `qemu_enter_devenv.sh`.

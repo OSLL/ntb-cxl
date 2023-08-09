@@ -26,6 +26,7 @@ cp $ROOT_PROJECT_PATH/yocto_files/configs/local.conf ./conf/local.conf
 rm -r ../$LAYER_NAME/recipes-kernel ../$LAYER_NAME/recipes-devtools || true # cleanup
 cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-kernel ../$LAYER_NAME/recipes-kernel
 cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-devtools ../$LAYER_NAME/recipes-devtools
+cp -rT $ROOT_PROJECT_PATH/yocto_files/recipes-connectivity ../$LAYER_NAME/recipes-connectivity
 
 set +x
 
