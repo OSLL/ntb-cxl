@@ -1,11 +1,11 @@
 # NTB/CXL Bridge for InterVM communication
 
 ## Requirements
--- [Docker](https://docs.docker.com/engine/install/)
+- [Docker](https://docs.docker.com/engine/install/)
 
 ## Using container
 
-`run_container.sh` a unified starting point for the Docker container. The general syntax is:
+`run_container.sh` is a unified starting point for the Docker container. The general syntax is:
 ```
 ./run_container.sh <command> <bulid_directory>
 ```
@@ -23,9 +23,9 @@ To run VM use command:
 ./run_container.sh run_vm
 ```
 
-User credentials to login vm:
+User credentials to login into the vm:
 - user: ```root```
-- pswd: is not set
+- pswd: not set
 
 ## Run two connected VMs
 ```
