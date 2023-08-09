@@ -20,12 +20,33 @@ The `build` command will create folder ```build_vm_image``` and build vm image, 
 
 To run VM use command:
 ```
-./run_qemu.sh
+./run_container.sh run_vm
 ```
 
 User credentials to login vm:
 - user: ```root```
 - pswd: is not set
+
+## Run two connected VMs
+```
+./run_container.sh run_vms
+```
+It uses the `scripts/run_vms.sh` script,
+which can also be used outside of the container.
+
+QEMU options can be customized via the following environment variables:
+- `IVSHMEM_COMMON_OPTIONS`
+- `CMDLINE_COMMON`
+- `COMMON_OPTIONS`
+- `VM1_OPTIONS`
+- `VM2_OPTIONS`
+
+The default behavior is to append whatever is specified in that variables
+to default values.
+To override the default value instead, suffix the option with `_OVERRIDE`,
+like `COMMON_OPTIONS_OVERRIDE`.
+
+To see default values of that options, refer to the script itself.
 
 ## Developing QEMU
 
