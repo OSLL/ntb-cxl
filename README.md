@@ -34,17 +34,17 @@ User credentials to login into the vm:
 It uses the `scripts/run_vms.sh` script,
 which can also be used outside of the container.
 
-QEMU options can be customized via the following environment variables:
-- `IVSHMEM_COMMON_OPTIONS`
-- `CMDLINE_COMMON`
-- `COMMON_OPTIONS`
-- `VM1_OPTIONS`
-- `VM2_OPTIONS`
+QEMU options can be customized via cli options:
+- `--ivshmem-common-opts`
+- `--cmdline-common`
+- `--common-opts`
+- `--vm1-opts`
+- `--vm2-opts`
 
 The default behavior is to append whatever is specified in that variables
 to default values.
-To override the default value instead, suffix the option with `_OVERRIDE`,
-like `COMMON_OPTIONS_OVERRIDE`.
+To override the default value instead, suffix the option with `-override`,
+like `common-opts-override`. Run `--help` for more information
 
 To see default values of that options, refer to the script itself.
 
