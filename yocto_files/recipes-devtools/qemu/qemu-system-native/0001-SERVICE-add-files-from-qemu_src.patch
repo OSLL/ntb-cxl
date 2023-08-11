@@ -1,7 +1,9 @@
-From a20108439d10d799e134ee700eeea1f4a9cbea1c Mon Sep 17 00:00:00 2001
+From c53dfe27b47254454e82b9b4366161bbc601d758 Mon Sep 17 00:00:00 2001
 From: OpenEmbedded <oe.patch@oe>
 Date: Wed, 2 Aug 2023 12:44:28 +0000
 Subject: [PATCH] SERVICE: add files from qemu_src
+
+From: OpenEmbedded <oe.patch@oe>
 
 From: OpenEmbedded <oe.patch@oe>
 
@@ -58,7 +60,7 @@ From: a <a>
 
 diff --git a/hw/misc/msi-example.c b/hw/misc/msi-example.c
 new file mode 100644
-index 000000000..9137b409e
+index 000000000..308ebbd26
 --- /dev/null
 +++ b/hw/misc/msi-example.c
 @@ -0,0 +1,110 @@
@@ -106,7 +108,7 @@ index 000000000..9137b409e
 +
 +    msi_notify(&d->parent_obj, 0);
 +
-+    printf("msi-example: sent msi irq\n");
++    fprintf(stderr, "msi-example: sent msi irq\n");
 +
 +    timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 1000);
 +}
@@ -127,7 +129,7 @@ index 000000000..9137b409e
 +    timer_init_ms(&d->timer, QEMU_CLOCK_VIRTUAL, msi_example_timer, d);
 +    timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 5000);
 +
-+    printf("msi-example: loaded\n");
++    fprintf(stderr, "msi-example: loaded\n");
 +}
 +
 +static void msi_example_unrealize(PCIDevice *pdev)
@@ -137,7 +139,7 @@ index 000000000..9137b409e
 +    timer_del(&d->timer);
 +    msi_uninit(pdev);
 +
-+    printf("msi-example: unloaded\n");
++    fprintf(stderr, "msi-example: unloaded\n");
 +}
 +
 +static void msi_example_class_init(ObjectClass *class, void *data)

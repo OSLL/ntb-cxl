@@ -42,7 +42,7 @@ static void msi_example_timer(void *opaque)
 
     msi_notify(&d->parent_obj, 0);
 
-    printf("msi-example: sent msi irq\n");
+    fprintf(stderr, "msi-example: sent msi irq\n");
 
     timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 1000);
 }
@@ -63,7 +63,7 @@ static void msi_example_realize(PCIDevice *pci_dev, Error **errp)
     timer_init_ms(&d->timer, QEMU_CLOCK_VIRTUAL, msi_example_timer, d);
     timer_mod(&d->timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 5000);
 
-    printf("msi-example: loaded\n");
+    fprintf(stderr, "msi-example: loaded\n");
 }
 
 static void msi_example_unrealize(PCIDevice *pdev)
@@ -73,7 +73,7 @@ static void msi_example_unrealize(PCIDevice *pdev)
     timer_del(&d->timer);
     msi_uninit(pdev);
 
-    printf("msi-example: unloaded\n");
+    fprintf(stderr, "msi-example: unloaded\n");
 }
 
 static void msi_example_class_init(ObjectClass *class, void *data)
