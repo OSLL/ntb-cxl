@@ -1,16 +1,20 @@
 #!/bin/bash
 
-if [ "$1" ]; then
-    CMD="$1"
-else
-    echo -e "\e[1;33mCommand is not provided, assuming 'build'\e[0m"
-    CMD=build
-fi
+RUN_ARGS=""
 
-if [ "$2" ]; then
-    BUILD_FOLDER_NAME="$2"
-else
-    echo -e "\e[1;33mBuild dir is not provided, using 'build_vm_image' dir\e[0m"
+for ARG in "$@"; do
+	case $ARG in
+		--host-build-dir=*)
+			BUILD_FOLDER_NAME=${ARG#*=}
+			;;
+		*)
+			RUN_ARGS+="$ARG "
+			;;
+	esac
+done
+
+if [ -z "$BUILD_FOLDER_NAME" ]; then
+    echo -e "\e[1;33mHost build dir is not provided, using 'build_vm_image' dir\e[0m"
     BUILD_FOLDER_NAME=build_vm_image/
 fi
 
@@ -22,4 +26,4 @@ docker run -it --rm -p 7000:7000 -p 7001:7001 -p 8000:8000 -p 8001:8001 \
 	-v "$BUILD_PATH":/home/user/project/build_dir \
 	-v "$PWD"/qemu_src:/home/user/project/qemu_src \
 	-v "$PWD"/yocto_files:/home/user/project/yocto_files \
-	yocto "$@"
+	yocto $RUN_ARGS

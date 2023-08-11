@@ -48,6 +48,10 @@ like `common-opts-override`. Run `--help` for more information
 
 To see default values of that options, refer to the script itself.
 
+*`run_container.sh` script has one more argument: `--host-build-dir=DIR`.
+It represents relative path to the build directory that is mapped to the
+container. This argument is not passed to the container's entrypoint*
+
 ## Developing QEMU
 
 You can do it both on your host system and with Docker container.
