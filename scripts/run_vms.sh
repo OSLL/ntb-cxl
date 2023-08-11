@@ -9,17 +9,16 @@ set -e
 
 cd "$YOCTO_WORK_DIR"/poky/build
 
-#runqemu qemux86-64 nographic slirp
+qemu="$(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name qemu-system-x86_64 | head -n1)"
+ivshmem_server="$(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name ivshmem-server | head -n1)"
 
-qemu="$(ls tmp/work/x86_64-linux/qemu-system-native/*/*/qemu-system-x86_64 | head -n1)"
-ivshmem_server="$(ls tmp/work/x86_64-linux/qemu-system-native/*/*/contrib/ivshmem-server/ivshmem-server | head -n1)"
+vm1_dir=guest_1
+vm2_dir=guest_2
 
-drive=tmp/deploy/images/qemux86-64/core-image-full-cmdline-qemux86-64.ext4
-kernel=tmp/deploy/images/qemux86-64/bzImage
-
-cp -r tmp/deploy/images/qemux86-64 tmp/deploy/images/qemux86-64_2
-drive2="${drive/qemux86-64\//qemux86-64_2/}"
-kernel2="${kernel/qemux86-64\//qemux86-64_2/}"
+drive=$vm1_dir/core-image-full-cmdline-qemux86-64.ext4
+kernel=$vm1_dir/bzImage
+drive2=$vm2_dir/core-image-full-cmdline-qemux86-64.ext4
+kernel2=$vm2_dir/bzImage
 
 IVSHMEM_COMMON_OPTIONS_DEFAULT="-device ivshmem-doorbell,vectors=2,chardev=ivshmem \
 	-chardev socket,path=/tmp/ivshmem_socket,id=ivshmem"
