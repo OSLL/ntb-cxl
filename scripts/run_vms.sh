@@ -5,6 +5,23 @@ echo "Starting qemu virtual machines..."
 set -x
 set -e
 
+get_idt_ivshmem_opts(){
+	local OPTS="-device idt-ntb-ivshmem,vectors=2,chardev=ivshmem,number=$1 -chardev socket,path=/tmp/ivshmem_socket,id=ivshmem"
+	if [ "$IVSHMEM_COMMON_OPTIONS_OVERRIDE" ]; then
+		OPTS="$IVSHMEM_COMMON_OPTIONS_OVERRIDE"
+	else
+		IVSHMEM_COMMON_OPTIONS="$OPTS,$IVSHMEM_COMMON_OPTIONS"
+	fi
+	echo $OPTS
+}
+
+get_vm_opts(){
+	local TELNEL_PORT=$((8000 + $1))
+	local SSH_PORT=$((7000 + $1))
+	local OPTS="-serial telnet::$TELNEL_PORT,server,nowait -net nic -net user,hostfwd=tcp::$SSH_PORT-:22"
+	echo $OPTS
+}
+
 . "$(dirname $0)"/common_variables.sh
 
 cd "$YOCTO_WORK_DIR"/poky/build
@@ -20,14 +37,8 @@ kernel=$vm1_dir/bzImage
 drive2=$vm2_dir/core-image-full-cmdline-qemux86-64.ext4
 kernel2=$vm2_dir/bzImage
 
-IVSHMEM_COMMON_OPTIONS_DEFAULT="-device ivshmem-doorbell,vectors=2,chardev=ivshmem \
-	-chardev socket,path=/tmp/ivshmem_socket,id=ivshmem"
-
-if [ "$IVSHMEM_COMMON_OPTIONS_OVERRIDE" ]; then
-	IVSHMEM_COMMON_OPTIONS="$IVSHMEM_COMMON_OPTIONS_OVERRIDE"
-else
-	IVSHMEM_COMMON_OPTIONS="$IVSHMEM_COMMON_OPTIONS_DEFAULT $IVSHMEM_COMMON_OPTIONS"
-fi
+IVSHMEM_COMMON_OPTIONS_VM1=$(get_idt_ivshmem_opts 0)
+IVSHMEM_COMMON_OPTIONS_VM2=$(get_idt_ivshmem_opts 1)
 
 CMDLINE_COMMON_DEFAULT="root=/dev/vda rw ip=dhcp oprofile.timer=1 tsc=reliable no_timer_check rcupdate.rcu_expedited=1"
 
@@ -41,8 +52,8 @@ COMMON_OPTIONS_DEFAULT="-usb -device usb-tablet -usb -device usb-kbd \
 	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
 	-nographic -monitor null"
 
-VM1_OPTIONS_DEFAULT="-serial telnet::8000,server,nowait -net nic -net user,hostfwd=tcp::7000-:22"
-VM2_OPTIONS_DEFAULT="-serial telnet::8001,server,nowait -net nic -net user,hostfwd=tcp::7001-:22"
+VM1_OPTIONS_DEFAULT=$(get_vm_opts 1)
+VM2_OPTIONS_DEFAULT=$(get_vm_opts 2)
 
 if [ "$COMMON_OPTIONS_OVERRIDE" ]; then
 	COMMON_OPTIONS="$COMMON_OPTIONS_OVERRIDE"
@@ -69,16 +80,19 @@ fi
 	-kernel "$kernel" \
 	-append "$CMDLINE_COMMON ivshmem_master" \
 	$COMMON_OPTIONS \
-	$IVSHMEM_COMMON_OPTIONS \
+	$IVSHMEM_COMMON_OPTIONS_VM1 \
 	$VM1_OPTIONS &
-
-"$qemu" \
+(
+	sleep 3 &&
+	"$qemu" \
 	-drive file="$drive2",if=virtio,format=raw \
 	-kernel "$kernel2" \
 	-append "$CMDLINE_COMMON" \
 	$COMMON_OPTIONS \
-	$IVSHMEM_COMMON_OPTIONS \
+	$IVSHMEM_COMMON_OPTIONS_VM2 \
 	$VM2_OPTIONS &
+)
+
 
 wait
 
