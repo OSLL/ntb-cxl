@@ -9,6 +9,8 @@ Usage: parse_args.sh [OPTIONS]...
     --command : global target to execute, e.g. 'build'
     --build-dir : the absolute path to the build directory. By default,
                   the value from BUILD_PATH environment variable is used
+    --build : specifies what is to be built. Possible values are 'qemu',
+              'image' and 'all'. By default is 'all'
 
 ---
 
@@ -23,6 +25,9 @@ All options are appended to the default parameters. To override default argument
 use extended flags with the suffix '-override', e.g. '--vm1-opts-override'
 "
 }
+
+
+export BUILD_VAL="all"
 
 
 for ARGUMENT in "$@"; do
@@ -66,6 +71,9 @@ for ARGUMENT in "$@"; do
             ;;
         --build-dir)
             export BUILD_PATH=$VALUE
+            ;;
+        --build)
+            export BUILD_VAL=$VALUE
             ;;
         -h | --help)
             help
