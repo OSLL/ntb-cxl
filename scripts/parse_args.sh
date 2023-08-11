@@ -3,7 +3,7 @@
 help(){
     echo \
 "
-Usage: $0 [OPTIONS]...
+Usage: parse_args.sh [OPTIONS]...
 
     -h, --help : show this help
     --command : global target to execute, e.g. 'build'
@@ -32,40 +32,40 @@ for ARGUMENT in "$@"; do
 
     case $KEY in
         --ivshmem-common-opts)
-            IVSHMEM_COMMON_OPTIONS=$VALUE
+            export IVSHMEM_COMMON_OPTIONS=$VALUE
             ;;
         --ivshmem-common-opts-override)
-            IVSHMEM_COMMON_OPTIONS_OVERRIDE=$VALUE
+            export IVSHMEM_COMMON_OPTIONS_OVERRIDE=$VALUE
             ;;
         --cmdline-common)
-            CMDLINE_COMMON=$VALUE
+            export CMDLINE_COMMON=$VALUE
             ;;
         --cmdline-common-override)
-            CMDLINE_COMMON_OVERRIDE=$VALUE
+            export CMDLINE_COMMON_OVERRIDE=$VALUE
             ;;
         --common-opts)
-            COMMON_OPTIONS=$VALUE
+            export COMMON_OPTIONS=$VALUE
             ;;
         --common-opts-override)
-            COMMON_OPTIONS_OVERRIDE=$VALUE
+            export COMMON_OPTIONS_OVERRIDE=$VALUE
             ;;
         --vm1-opts)
-            VM1_OPTIONS=$VALUE
+            export VM1_OPTIONS=$VALUE
             ;;
         --vm1-opts-override)
-            VM1_OPTIONS_OVERRIDE=$VALUE
+            export VM1_OPTIONS_OVERRIDE=$VALUE
             ;;
         --vm2-opts)
-            VM2_OPTIONS=$VALUE
+            export VM2_OPTIONS=$VALUE
             ;;
         --vm2-opts-override)
-            VM2_OPTIONS_OVERRIDE=$VALUE
+            export VM2_OPTIONS_OVERRIDE=$VALUE
             ;;
         --command)
-            COMMAND=$VALUE
+            export COMMAND=$VALUE
             ;;
         --build-dir)
-            BUILD_PATH=$VALUE
+            export BUILD_PATH=$VALUE
             ;;
         -h | --help)
             help

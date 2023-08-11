@@ -1,9 +1,8 @@
 #!/bin/bash
 
 set -e
-set -x
 
-. "$(dirname $0)"/parse_args.sh $@
+. "$(dirname $0)"/parse_args.sh
 
 case "$COMMAND" in
 	build)
