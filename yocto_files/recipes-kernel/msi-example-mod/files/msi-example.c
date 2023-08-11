@@ -5,7 +5,7 @@ struct pci_device_id devid = {
 	PCI_DEVICE(0x1337, 0x0001)
 };
 
-static irqreturn_t msi_example_handle_irq(int n, void* data)
+static irqreturn_t msi_example_handle_irq(int irq, void* dev_id)
 {
 	pr_info("msi-example: got an interrupt\n");
 
@@ -22,6 +22,17 @@ static int msi_example_probe(struct pci_dev *dev, const struct pci_device_id *id
 		pr_err("msi-example: pci_enable_device failed with code %d\n", err);
 		return 1;
 	}
+
+	/* DMA **MUST** be enabled for MSI interrupts to work */
+	err = dma_set_mask(&dev->dev, DMA_BIT_MASK(32));
+	if (err)
+	{
+		pr_err("msi-example: dma_set_mask failed with code %d\n", err);
+		return 2;
+	}
+
+	/* Also required */
+	pci_set_master(dev);
 
 	err = pci_alloc_irq_vectors(dev, 1, 1, PCI_IRQ_MSI);
 	if (err < 0)
