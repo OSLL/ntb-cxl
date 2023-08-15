@@ -18,14 +18,15 @@ fi
 git pull
 
 source oe-init-build-env build
-if [ -z "$(bitbake-layers show-layers | grep $LAYER_NAME)" ]; then
-    bitbake-layers create-layer ../$LAYER_NAME
-    echo -e "BBLAYERS += \"$FULL_LAYER_NAME\"" >> ./conf/bblayers.conf
-fi
+
 cp $ROOT_PROJECT_PATH/yocto_files/configs/local.conf ./conf/local.conf
-rm -r ../$LAYER_NAME/recipes-kernel ../$LAYER_NAME/recipes-devtools || true # cleanup
-cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-kernel ../$LAYER_NAME/recipes-kernel
-cp -r $ROOT_PROJECT_PATH/yocto_files/recipes-devtools ../$LAYER_NAME/recipes-devtools
+rm -r ../$LAYER_NAME || true # cleanup
+cp -r $ROOT_PROJECT_PATH/yocto_files/$LAYER_NAME ../$LAYER_NAME
+
+# Add layer to bitbake if it has not already been added
+if [ -z "$(bitbake-layers show-layers | grep $LAYER_NAME)" ]; then
+    bitbake-layers add-layer ../$LAYER_NAME
+fi
 
 set +x
 

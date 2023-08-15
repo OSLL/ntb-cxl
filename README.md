@@ -1,11 +1,11 @@
 # NTB/CXL Bridge for InterVM communication
 
 ## Requirements
--- [Docker](https://docs.docker.com/engine/install/)
+- [Docker](https://docs.docker.com/engine/install/)
 
 ## Using container
 
-`run_container.sh` a unified starting point for the Docker container. The general syntax is:
+`run_container.sh` is a unified starting point for the Docker container. The general syntax is:
 ```
 ./run_container.sh <command> <bulid_directory>
 ```
@@ -20,12 +20,37 @@ The `build` command will create folder ```build_vm_image``` and build vm image, 
 
 To run VM use command:
 ```
-./run_qemu.sh
+./run_container.sh run_vm
 ```
 
-User credentials to login vm:
+User credentials to login into the vm:
 - user: ```root```
-- pswd: is not set
+- pswd: not set
+
+## Run two connected VMs
+```
+./run_container.sh run_vms
+```
+It uses the `scripts/run_vms.sh` script,
+which can also be used outside of the container.
+
+QEMU options can be customized via cli options:
+- `--ivshmem-common-opts`
+- `--cmdline-common`
+- `--common-opts`
+- `--vm1-opts`
+- `--vm2-opts`
+
+The default behavior is to append whatever is specified in that variables
+to default values.
+To override the default value instead, suffix the option with `-override`,
+like `common-opts-override`. Run `--help` for more information
+
+To see default values of that options, refer to the script itself.
+
+*`run_container.sh` script has one more argument: `--host-build-dir=DIR`.
+It represents relative path to the build directory that is mapped to the
+container. This argument is not passed to the container's entrypoint*
 
 ## Developing QEMU
 
@@ -46,6 +71,9 @@ After making changes, commit them.
 
 When you're done, run `qemu_finish_devenv.sh` (or `./run_container.sh finish_qemu_devenv`).
 This will format patches from commits and copy them into this repository to `yocto_files`.
+
+For any changes to take effect, qemu should be rebuilt
+(`./run_container.sh build` or `scripts/prepare_yocto.sh && scripts/build_yocto.sh`).
 
 As with `build`, both `enter_qemu_devenv` and `finish_qemu_devenv` support
 specifying custom build directory,
