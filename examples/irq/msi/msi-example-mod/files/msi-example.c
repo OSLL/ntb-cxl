@@ -47,6 +47,7 @@ static int msi_example_probe(struct pci_dev *dev, const struct pci_device_id *id
 	err = pci_request_irq(dev, 0, &msi_example_handle_irq, NULL, &devid, "msi-example-handler");
 	if (err)
 	{
+		pci_free_irq_vectors(dev);
 		pr_err("msi-example: pci_request_irq failed with code %d\n", err);
 		return err;
 	}
