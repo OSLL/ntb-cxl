@@ -12,9 +12,9 @@ cd "$YOCTO_WORK_DIR"/poky
 source oe-init-build-env build
 
 if [[ $BUILD_VAL == "all" || $BUILD_VAL == "image" ]]; then
-    bitbake -c kernel_configme -f virtual/kernel && \
-    bitbake -c compile -f virtual/kernel && \
-    bitbake -c deploy virtual/kernel && \
+    bitbake -c kernel_configme -f virtual/kernel
+    bitbake -c compile -f virtual/kernel
+    bitbake -c deploy virtual/kernel
     bitbake core-image-full-cmdline
 
     # Create two image copies for VMs
@@ -23,7 +23,6 @@ if [[ $BUILD_VAL == "all" || $BUILD_VAL == "image" ]]; then
 fi
 
 if [[ $BUILD_VAL == "all" || $BUILD_VAL == "qemu" ]]; then
-    bitbake qemu && \
     bitbake -c install qemu-system-native
 fi
 

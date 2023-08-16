@@ -11,9 +11,11 @@ cd "$YOCTO_WORK_DIR"/poky
 
 source oe-init-build-env build
 
-devtool modify --no-overrides qemu-system-native
+RECIPE_NAME="qemu-system-native"
 
-cd workspace/sources/qemu-system-native
+devtool modify --no-overrides $RECIPE_NAME
+
+cd workspace/sources/$RECIPE_NAME
 
 # Sort of a weird hack, don't have any ideas about why things are like that
 git config --local user.name a
@@ -42,7 +44,7 @@ set +x
 cat <<EOF
 
 ========================================================================
-Working directory is at poky/build/workspace/sources/qemu-system-native.
+Working directory is at poky/build/workspace/sources/$RECIPE_NAME.
 Make your changes, commit them and run qemu_leave_devenv.sh.
 ========================================================================
 
