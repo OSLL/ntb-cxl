@@ -31,7 +31,7 @@ export BUILD_VAL="all"
 
 
 for ARGUMENT in "$@"; do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
+    KEY="$(echo "$ARGUMENT" | cut -f1 -d=)"
     KEY_LENGTH=${#KEY}
     VALUE="${ARGUMENT:KEY_LENGTH+1}"
 
