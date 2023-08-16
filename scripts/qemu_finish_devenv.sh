@@ -11,17 +11,19 @@ cd "$YOCTO_WORK_DIR"/poky
 
 source oe-init-build-env build
 
-devtool finish qemu-system-native ../meta-ntb-cxl
+RECIPE_NAME="qemu-system-native"
 
-DESTDIR="$ROOT_PROJECT_PATH"/yocto_files/recipes-devtools/qemu
+devtool finish $RECIPE_NAME $LAYER_NAME
+
+DESTDIR="$ROOT_PROJECT_PATH"/yocto_files/$LAYER_NAME/recipes-devtools/qemu
 mkdir -p "$DESTDIR"
-cd ../meta-ntb-cxl/recipes-devtools/qemu
+cd ../$LAYER_NAME/recipes-devtools/qemu
 
 # obsolete patches will remain here, remove them
-rm -r "$DESTDIR"/qemu-system-native || true
+# rm -r "$DESTDIR"/$RECIPE_NAME || true
 
-cp -r qemu-system-native "$DESTDIR"
-cp qemu-system-native_%.bbappend "$DESTDIR"
+cp -Tru $RECIPE_NAME "$DESTDIR/$RECIPE_NAME"
+cp $RECIPE_NAME\_8.0.2.bbappend "$DESTDIR"
 
 set +x
 

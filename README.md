@@ -77,7 +77,10 @@ the `./run_container --command=shell` command can be used.
 
 The `./run_container --command=finish_qemu_devenv` command should be used to
 finish QEMU development. This will format patches from commits and copy them
-into this repository to `yocto_files`.
+into this repository to `yocto_files`. When QEMU development is finished,
+QEMU rebuild is required. This can be done with
+`./run_container.sh --command=build --build=qemu` command
+
 
 When using host system, you may also try to use various other useful [devtool]
 (https://docs.yoctoproject.org/kernel-dev/common.html#using-devtool-to-patch-the-kernel)

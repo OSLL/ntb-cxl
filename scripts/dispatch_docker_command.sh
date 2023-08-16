@@ -15,6 +15,8 @@ case "$COMMAND" in
 		scripts/qemu_finish_devenv.sh "$BUILD_PATH"
 		;;
 	shell)
+		cd "$BUILD_PATH"/poky
+		source oe-init-build-env build
 		bash
 		;;
 	run_vm)

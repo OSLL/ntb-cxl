@@ -23,7 +23,6 @@ if [[ $BUILD_VAL == "all" || $BUILD_VAL == "image" ]]; then
 fi
 
 if [[ $BUILD_VAL == "all" || $BUILD_VAL == "qemu" ]]; then
-    bitbake qemu
     bitbake -c install qemu-system-native
 fi
 
