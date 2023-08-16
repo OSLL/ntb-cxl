@@ -1,8 +1,11 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 
+#define MSI_EXAMPLE_VENDOR_ID 0x1337
+#define MSI_EXAMPLE_DEVICE_ID 0x0001
+
 struct pci_device_id devid = {
-	PCI_DEVICE(0x1337, 0x0001)
+	PCI_DEVICE(MSI_EXAMPLE_VENDOR_ID, MSI_EXAMPLE_DEVICE_ID)
 };
 
 static irqreturn_t msi_example_handle_irq(int irq, void* dev_id)
