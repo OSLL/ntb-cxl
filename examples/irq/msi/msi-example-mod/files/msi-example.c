@@ -12,7 +12,7 @@ static irqreturn_t msi_example_handle_irq(int irq, void* dev_id)
 {
 	pr_info("msi-example: got an interrupt\n");
 
-	return 0;
+	return IRQ_HANDLED;
 }
 
 static int msi_example_probe(struct pci_dev *dev, const struct pci_device_id *id)
