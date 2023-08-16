@@ -23,7 +23,7 @@ static int msi_example_probe(struct pci_dev *dev, const struct pci_device_id *id
 	if (err)
 	{
 		pr_err("msi-example: pci_enable_device failed with code %d\n", err);
-		return 1;
+		return err;
 	}
 
 	/* DMA **MUST** be enabled for MSI interrupts to work */
@@ -31,7 +31,7 @@ static int msi_example_probe(struct pci_dev *dev, const struct pci_device_id *id
 	if (err)
 	{
 		pr_err("msi-example: dma_set_mask failed with code %d\n", err);
-		return 2;
+		return err;
 	}
 
 	/* Also required */
@@ -41,14 +41,14 @@ static int msi_example_probe(struct pci_dev *dev, const struct pci_device_id *id
 	if (err < 0)
 	{
 		pr_err("msi-example: pci_alloc_irq_vectors failed with code %d\n", err);
-		return 2;
+		return err;
 	}
 
 	err = pci_request_irq(dev, 0, &msi_example_handle_irq, NULL, &devid, "msi-example-handler");
 	if (err)
 	{
 		pr_err("msi-example: pci_request_irq failed with code %d\n", err);
-		return 3;
+		return err;
 	}
 
 	pr_info("msi-example: probed a device\n");
@@ -77,7 +77,7 @@ static int __init msi_example_init(void)
 	if (err)
 	{
 		pr_err("msi-example: pci_register_driver failed with code %d\n", err);
-		return 1;
+		return err;
 	}
 
 	pr_info("msi-example: loaded\n");
