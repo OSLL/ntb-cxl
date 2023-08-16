@@ -8,3 +8,4 @@ to the `qemu_src` in the repository root.
 to `yocto_files/recipes-kernel/` in the repository root.
 4. Enter and leave devenv to generate and copy patches.
 5. Build.
+6. `./run_container.sh --command=run_vm --common-opts="-device msi-example"`
