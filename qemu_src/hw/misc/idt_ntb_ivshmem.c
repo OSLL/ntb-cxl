@@ -8,7 +8,7 @@
  * Based On: ivshmem.c
  *          Copyright (c) 20?? Cam Macdonell <cam@cs.ualberta.ca>
  *
- * 
+ *
  */
 
 #include "qemu/osdep.h"
@@ -112,6 +112,7 @@ struct IVShmemState {
     /* Not implemented */
     /* uint8_t srcbound[4]; */  /* Src partition of messages */
     uint32_t db_inbound;  /* Inbound doorbell (related to patrition 0?) */
+    uint32_t db_inbound_mask; /* Inbould doorbell mask */
     uint32_t db_outbound;  /* Outbound doorbell (related to partition 0?) */
 
     /* IDT interconnect */
@@ -144,6 +145,8 @@ enum idt_config_registers {
     IDT_NT_NTCTL       = 0x400U,
     IDT_NT_NTINTSTS    = 0x404U,
     IDT_NT_OUTDBELLSET = 0x420U,
+    IDT_NT_INDBELLSTS  = 0x428U,
+    IDT_NT_INDBELLMSK  = 0x42CU,
     IDT_NT_OUTMSG0     = 0x430U,
     IDT_NT_INMSG0      = 0x440U,
     IDT_NT_NTMTBLADDR  = 0x4D0U,
@@ -335,6 +338,14 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
                 IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
             }
             break;
+	case IDT_NT_INDBELLSTS:
+	    s->db_inbound = val;
+	    IVSHMEM_DPRINTF("Wrote value 0x%lx to the inbound doorbell\n", val);
+	    break;
+	case IDT_NT_INDBELLMSK:
+	    s->db_inbound_mask = val;
+	    IVSHMEM_DPRINTF("Set the inbound doorbell mask to value 0x%lx\n", val);
+	    break;
         default:
             IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
     }
@@ -371,6 +382,14 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Read value 0x%lx from inbound register\n", s->inbound[0]);
             ret = s->inbound[0];
             break;
+	case IDT_NT_INDBELLSTS:
+	    IVSHMEM_DPRINTF("Read value 0x%lx from inbound doorbell register\n", s->db_inbound);
+	    ret = s->db_inbound;
+	    break;
+	case IDT_NT_INDBELLMSK:
+	    IVSHMEM_DPRINTF("Read the inbound doorbell mask: %0xlx\n", s->db_inbound_mask);
+	    ret = s->db_inbound_mask;
+	    break;
         default:
             IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
             ret = 0;
