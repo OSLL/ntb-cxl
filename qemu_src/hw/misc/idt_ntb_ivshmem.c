@@ -323,16 +323,16 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             break;
         case IDT_NT_OUTMSG0:
             s->outbound[0] = val;
-            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound register 0\n", val);
+            IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound register 0\n", val);
             break;
         case IDT_NT_OUTDBELLSET:
             s->db_outbound = val;
             s->db_inbound = s->db_outbound;
-            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound doorbell\n", val);
+            IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound doorbell\n", val);
             write_outbound_register(s);
             if (s->other_vm_id != -1){
                 event_notifier_set(&s->peers[s->other_vm_id].eventfds[1]);
-                IVSHMEM_DPRINTF("Sended msg interrupt from %d to %d\n", s->vm_id, s->other_vm_id);
+                IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
             }
             break;
         default:
@@ -368,15 +368,15 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = VALUE_NT_NTINTSTS;
             break;
         case IDT_NT_INMSG0:
-            IVSHMEM_DPRINTF("Readed value 0x%lx from inbound register\n", s->inbound[0]);
+            IVSHMEM_DPRINTF("Read value 0x%lx from inbound register\n", s->inbound[0]);
             ret = s->inbound[0];
             break;
         default:
-            IVSHMEM_DPRINTF("why are we reading " HWADDR_FMT_plx "\n", addr);
+            IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
             ret = 0;
     }
 
-    IVSHMEM_DPRINTF("Readed value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
+    IVSHMEM_DPRINTF("Read value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
     return ret;
 }
 
@@ -407,7 +407,7 @@ static void ivshmem_vector_notify(void *opaque)
         s->other_vm_id = read_other_vm_id(s);
     }else{
         s->inbound[0] = read_outbound_register(s);
-        IVSHMEM_DPRINTF("Readed value 0x%lx from shm outbound register\n", s->inbound[0]);
+        IVSHMEM_DPRINTF("Read value 0x%lx from shm outbound register\n", s->inbound[0]);
         intterupt_notify(s, 0);
     }
     return;
