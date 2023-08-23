@@ -46,7 +46,7 @@
 
 #define IVSHMEM_REG_BAR_SIZE 0x1000
 
-#define IVSHMEM_DEBUG 0
+#define IVSHMEM_DEBUG 1
 #define IVSHMEM_DPRINTF(fmt, ...)                       \
     do {                                                \
         if (IVSHMEM_DEBUG) {                            \
@@ -387,7 +387,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
 	    ret = s->db_inbound;
 	    break;
 	case IDT_NT_INDBELLMSK:
-	    IVSHMEM_DPRINTF("Read the inbound doorbell mask: %0xlx\n", s->db_inbound_mask);
+	    IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%lx\n", s->db_inbound_mask);
 	    ret = s->db_inbound_mask;
 	    break;
         default:
