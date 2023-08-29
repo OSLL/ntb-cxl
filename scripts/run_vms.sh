@@ -6,7 +6,7 @@ set -x
 set -e
 
 get_idt_ivshmem_opts(){
-	local OPTS="-device idt-ntb-ivshmem,vectors=2,chardev=ivshmem,number=$1 -chardev socket,path=/tmp/ivshmem_socket,id=ivshmem"
+	local OPTS="-device idt-ntb-ivshmem,vectors=3,chardev=ivshmem,number=$1 -chardev socket,path=/tmp/ivshmem_socket,id=ivshmem"
 	if [ "$IVSHMEM_COMMON_OPTIONS_OVERRIDE" ]; then
 		OPTS="$IVSHMEM_COMMON_OPTIONS_OVERRIDE"
 	else
@@ -19,7 +19,7 @@ get_vm_opts(){
 	local TELNEL_PORT=$((8000 + $1))
 	local SSH_PORT=$((7000 + $1))
 	local OPTS="-serial telnet::$TELNEL_PORT,server,nowait -net nic -net user,hostfwd=tcp::$SSH_PORT-:22"
-	echo $OPTS
+	echo "$OPTS"
 }
 
 . "$(dirname $0)"/common_variables.sh
@@ -73,7 +73,7 @@ else
 	VM2_OPTIONS="$VM2_OPTIONS_DEFAULT $VM2_OPTIONS"
 fi
 
-"$ivshmem_server" -m . -l 1M -n 2 -F &
+"$ivshmem_server" -m . -l 1M -n 3 -F &
 
 "$qemu" \
 	-drive file="$drive",if=virtio,format=raw \
