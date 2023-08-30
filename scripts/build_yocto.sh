@@ -24,6 +24,7 @@ fi
 
 if [[ $BUILD_VAL == "all" || $BUILD_VAL == "qemu" ]]; then
     bitbake -c install qemu-system-native
+    bitbake qemu-helper-native
 fi
 
 set +x
