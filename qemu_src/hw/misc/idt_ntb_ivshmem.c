@@ -173,6 +173,12 @@ enum idt_pci_config_registers_value {
                          (0x1U << 31), /* TODO: What is it? */
 };
 
+enum idt_ivshmem_eventfds {
+    EVENTFD_VM_ID = 0,
+    EVENTFD_DBELL,
+    EVENTFD_MSG,
+};
+
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
 {
     return (ivs->features & (1 << feature));
@@ -311,7 +317,7 @@ static void init_vm_ids(IVShmemState *s)
     if(s->self_number){
         /* Second vm */
         s->other_vm_id = read_other_vm_id(s);
-        event_notifier_set(&s->peers[s->other_vm_id].eventfds[0]);
+        event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_VM_ID]);
     }
     IVSHMEM_DPRINTF("Started vm with self_number=%d and vm_id=%d\n", s->self_number, s->vm_id);
 }
@@ -341,7 +347,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 
             if (s->other_vm_id != -1)
             {
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[2]);
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_MSG]);
                 IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
             }
             break;
@@ -353,7 +359,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 
             if (s->other_vm_id != -1)
             {
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[1]);
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_DBELL]);
                 IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
             }
             break;
