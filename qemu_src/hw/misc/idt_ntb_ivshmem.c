@@ -451,10 +451,14 @@ static void ivshmem_vector_notify(void *opaque)
             s->db_inbound = s->db_outbound;
             IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm doorbell to the inbound\n", s->db_inbound);
             break;
-        default:
+        case 2:
             s->inbound[0] = shm_read_outbound_register(s);
             IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm register\n", s->inbound[0]);
             interrupt_notify(s, 0);
+            break;
+        default:
+            error_report("idt-ntb-ivshmem: event interrupt on unknown vector %d\n", vector);
+            break;
     }
 }
 
