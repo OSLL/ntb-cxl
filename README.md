@@ -123,11 +123,11 @@ $ ssh root@localhost -p7002
 
 This is the basic usage.
 Also, setting the peer_mask should work.
-See [the kernel documentation]
-(https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool)
+See (the kernel documentation)
+[https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool]
 for the full usage.
 
-The one thing that is not documented there is message registers.
+The one thing that is not documented there are the message registers.
 Currently, only passing `msg0` should work.
 It works like `db` and `peer_db`.
 Write to `peer0/msg0`, read from `msg0`.
