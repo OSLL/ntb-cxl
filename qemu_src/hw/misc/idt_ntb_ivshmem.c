@@ -408,11 +408,11 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = s->inbound[0];
             break;
         case IDT_NT_INDBELLSTS:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound doorbell register\n", s->db_inbound);
+            IVSHMEM_DPRINTF("Read value 0x%x from the inbound doorbell register\n", s->db_inbound);
             ret = s->db_inbound;
             break;
         case IDT_NT_INDBELLMSK:
-            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%lx\n", s->db_inbound_mask);
+            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->db_inbound_mask);
             ret = s->db_inbound_mask;
             break;
             default:
@@ -454,7 +454,7 @@ static void ivshmem_vector_notify(void *opaque)
             break;
         case 1:
             s->db_inbound = shm_read_outbound_db(s);
-            IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm doorbell to the inbound\n", s->db_inbound);
+            IVSHMEM_DPRINTF("Read value 0x%x from the outbound shm doorbell to the inbound\n", s->db_inbound);
             break;
         case 2:
             s->inbound[0] = shm_read_outbound_register(s);
