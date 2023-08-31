@@ -233,9 +233,9 @@ static void shm_write_outbound_db(IVShmemState *s)
     write_data_to_shm(s, IVSHMEM_IDT_OUTREG_INDEX, s->db_outbound);
 }
 
-static void shm_read_outbound_db(IVShmemState *s)
+static uint64_t shm_read_outbound_db(IVShmemState *s)
 {
-    s->db_outbound = read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
+    return read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
 }
 
 static uint64_t get_gasadata(IVShmemState *s)
@@ -453,8 +453,7 @@ static void ivshmem_vector_notify(void *opaque)
             s->other_vm_id = read_other_vm_id(s);
             break;
         case 1:
-            shm_read_outbound_db(s);
-            s->db_inbound = s->db_outbound;
+            s->db_inbound = shm_read_outbound_db(s);
             IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm doorbell to the inbound\n", s->db_inbound);
             break;
         case 2:
