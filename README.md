@@ -123,8 +123,8 @@ $ ssh root@localhost -p7002
 
 This is the basic usage.
 Also, setting the peer_mask should work.
-See (the kernel documentation)
-[https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool]
+See [the kernel documentation](
+https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool)
 for the full usage.
 
 The one thing that is not documented there are the message registers.
