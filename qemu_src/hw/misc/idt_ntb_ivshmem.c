@@ -316,14 +316,14 @@ static void write_vm_id(IVShmemState *s)
 {
     int *addr;
     addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    addr[s->self_number % 2] = s->vm_id;
+    addr[s->self_number == 0 ? SHM_VM1_ID : SHM_VM2_ID] = s->vm_id;
 }
 
 static int read_other_vm_id(IVShmemState *s)
 {
     int *addr;
     addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    return addr[(s->self_number + 1) % 2];
+    return addr[s->self_number == 0 ? SHM_VM2_ID : SHM_VM1_ID];
 }
 
 static void init_vm_ids(IVShmemState *s)
