@@ -179,6 +179,21 @@ enum idt_ivshmem_eventfds {
     EVENTFD_MSG,
 };
 
+enum idt_ivshmem_shm_addrs {
+    SHM_VM1_ID = 0,
+    SHM_VM2_ID,
+    SHM_VM1_DB,
+    SHM_VM2_DB,
+    SHM_VM1_MSG0,
+    SHM_VM1_MSG1,
+    SHM_VM1_MSG2,
+    SHM_VM1_MSG3,
+    SHM_VM2_MSG0,
+    SHM_VM2_MSG1,
+    SHM_VM2_MSG2,
+    SHM_VM2_MSG3,
+};
+
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
 {
     return (ivs->features & (1 << feature));
