@@ -40,9 +40,6 @@
 #define IVSHMEM_MAX_PEERS UINT16_MAX
 #define IVSHMEM_IOEVENTFD   0
 #define IVSHMEM_MSI     1
-#define IVSHMEM_IDT_OUTREG_INDEX 2
-#define IVSHMEM_NTB_VM_1_INDEX 3
-#define IVSHMEM_NTB_VM_2_INDEX 4
 
 #define IVSHMEM_REG_BAR_SIZE 0x1000
 
@@ -107,13 +104,13 @@ struct IVShmemState {
     uint64_t nt_mtb_addr;
     /* Currently only first value is used */
     uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
-    uint64_t inbound[4];  /* Inbound messages */
-    uint64_t outbound[4];  /* Outbound messages */
+    uint64_t *inbound;  /* Inbound messages */
+    uint64_t *outbound;  /* Outbound messages */
     /* Not implemented */
     /* uint8_t srcbound[4]; */  /* Src partition of messages */
-    uint32_t db_inbound;  /* Inbound doorbell (related to patrition 0?) */
+    uint32_t *db_inbound;  /* Inbound doorbell (related to patrition 0?) */
     uint32_t db_inbound_mask; /* Inbould doorbell mask */
-    uint32_t db_outbound;  /* Outbound doorbell (related to partition 0?) */
+    uint32_t *db_outbound;  /* Outbound doorbell (related to partition 0?) */
 
     /* IDT interconnect */
     uint32_t self_number;
@@ -233,26 +230,6 @@ static uint64_t read_data_from_shm(IVShmemState *s, int index)
     return addr[index];
 }
 
-static void shm_write_outbound_register(IVShmemState *s)
-{
-    write_data_to_shm(s, IVSHMEM_IDT_OUTREG_INDEX, s->outbound[0]);
-}
-
-static uint64_t shm_read_outbound_register(IVShmemState *s)
-{
-    return read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
-}
-
-static void shm_write_outbound_db(IVShmemState *s)
-{
-    write_data_to_shm(s, IVSHMEM_IDT_OUTREG_INDEX, s->db_outbound);
-}
-
-static uint64_t shm_read_outbound_db(IVShmemState *s)
-{
-    return read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
-}
-
 static uint64_t get_gasadata(IVShmemState *s)
 {
     uint64_t ret;
@@ -357,7 +334,6 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             break;
         case IDT_NT_OUTMSG0:
             s->outbound[0] = val;
-            shm_write_outbound_register(s);
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register 0\n", val);
 
             if (s->other_vm_id != -1)
@@ -367,9 +343,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             }
             break;
         case IDT_NT_OUTDBELLSET:
-            s->db_outbound = val;
-            s->db_inbound = s->db_outbound;
-            shm_write_outbound_db(s);
+            *s->db_outbound = val;
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound doorbell\n", val);
 
             if (s->other_vm_id != -1)
@@ -379,7 +353,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             }
             break;
         case IDT_NT_INDBELLSTS:
-            s->db_inbound = val;
+            *s->db_inbound = val;
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the inbound doorbell\n", val);
             break;
         case IDT_NT_INDBELLMSK:
@@ -423,8 +397,8 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = s->inbound[0];
             break;
         case IDT_NT_INDBELLSTS:
-            IVSHMEM_DPRINTF("Read value 0x%x from the inbound doorbell register\n", s->db_inbound);
-            ret = s->db_inbound;
+            IVSHMEM_DPRINTF("Read value 0x%x from the inbound doorbell register\n", *s->db_inbound);
+            ret = *s->db_inbound;
             break;
         case IDT_NT_INDBELLMSK:
             IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->db_inbound_mask);
@@ -468,12 +442,11 @@ static void ivshmem_vector_notify(void *opaque)
             s->other_vm_id = read_other_vm_id(s);
             break;
         case 1:
-            s->db_inbound = shm_read_outbound_db(s);
-            IVSHMEM_DPRINTF("Read value 0x%x from the outbound shm doorbell to the inbound\n", s->db_inbound);
+            IVSHMEM_DPRINTF("Received value 0x%x to the inbound doorbell\n", *s->db_inbound);
+            // TODO: maybe need to send an interrupt?
             break;
         case 2:
-            s->inbound[0] = shm_read_outbound_register(s);
-            IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm register\n", s->inbound[0]);
+            IVSHMEM_DPRINTF("Read value 0x%lx to the inbound message register\n", s->inbound[0]);
             interrupt_notify(s, 0);
             break;
         default:
@@ -1070,6 +1043,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     IVShmemState *s = IVSHMEM_NTB_IDT(dev);
     Error *err = NULL;
     uint8_t *pci_conf;
+    uint64_t *bar_addr;
 
     /* IRQFD requires MSI */
     if (ivshmem_has_feature(s, IVSHMEM_IOEVENTFD) &&
@@ -1152,6 +1126,15 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
                      PCI_BASE_ADDRESS_MEM_PREFETCH |
                      PCI_BASE_ADDRESS_MEM_TYPE_64,
                      s->ivshmem_bar2);
+
+    // Initialize pointers to various outbound registers
+    bar_addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
+
+    s->db_inbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM1_DB : SHM_VM2_DB];
+    s->db_outbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM2_DB : SHM_VM1_DB];
+
+    s->inbound = &bar_addr[s->vm_id == 0 ? SHM_VM1_MSG0 : SHM_VM2_MSG0];
+    s->outbound = &bar_addr[s->vm_id == 0 ? SHM_VM2_MSG0 : SHM_VM1_MSG0];
 }
 
 static void ivshmem_exit(PCIDevice *dev)
