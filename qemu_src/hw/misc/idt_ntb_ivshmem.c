@@ -118,6 +118,8 @@ struct IVShmemState {
 };
 
 enum idt_registers {
+    IDT_SW_NTP0_PCIECMDSTS = 0x1004U,
+    IDT_SW_NTP0_NTCTL      = 0x1400U,
     IDT_SW_NTP2_PCIECMDSTS = 0x5004U,
     IDT_SW_NTP2_NTCTL      = 0x5400U,
     IDT_SW_SWPART0STS      = 0x3E104U,
@@ -132,8 +134,10 @@ enum idt_registers_values {
                        (0x0U << 10),  /* NT Function is enabled */
     VALUE_SWPORT2STS = VALUE_SWPORT0STS,
     VALUE_SWPART0STS = (0x1U << 5), /* Partition is enabled */
-    VALUE_NTP2_PCIECMDSTS = (0x1U << 2), /* Bus Master is enabled */
-    VALUE_NTP2_NTCTL = (0x1 << 1), /* Completion is enabled (CPEN flag) */
+    VALUE_NTP0_PCIECMDSTS = (0x1U << 2), /* Bus Master is enabled */
+    VALUE_NTP0_NTCTL = (0x1 << 1), /* Completion is enabled (CPEN flag) */
+    VALUE_NTP2_PCIECMDSTS = VALUE_NTP0_PCIECMDSTS,
+    VALUE_NTP2_NTCTL = VALUE_NTP0_NTCTL,
 };
 
 enum idt_config_registers {
@@ -245,6 +249,12 @@ static uint64_t get_gasadata(IVShmemState *s)
             break;
         case IDT_SW_SWPART0STS:
             ret = VALUE_SWPART0STS;
+            break;
+        case IDT_SW_NTP0_PCIECMDSTS:
+            ret = VALUE_NTP0_PCIECMDSTS;
+            break;
+        case IDT_SW_NTP0_NTCTL:
+            ret = VALUE_NTP0_NTCTL;
             break;
         case IDT_SW_NTP2_PCIECMDSTS:
             ret = VALUE_NTP2_PCIECMDSTS;
