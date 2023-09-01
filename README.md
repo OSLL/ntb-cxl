@@ -126,6 +126,8 @@ Also, setting the peer_mask should work.
 See [the kernel documentation](
 https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool)
 for the full usage.
+Even more functionality is described in [the source code](
+https://elixir.bootlin.com/linux/v6.1.50/source/drivers/ntb/test/ntb_tool.c#L54).
 
 The one thing that is not documented there are the message registers.
 Currently, only passing `msg0` should work.
