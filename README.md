@@ -133,3 +133,10 @@ The one thing that is not documented there are the message registers.
 Currently, only passing `msg0` should work.
 It works like `db` and `peer_db`.
 Write to `peer0/msg0`, read from `msg0`.
+
+### `ntb_hw_idt` debugfs node
+
+The driver has its own debugfs node with some useful info:
+```ShellSession
+# cat /sys/kernel/debug/ntb_hw_idt/info\:0000\:00\:03.0
+```
