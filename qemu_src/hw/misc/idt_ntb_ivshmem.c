@@ -139,6 +139,7 @@ enum idt_registers_values {
 enum idt_config_registers {
     IDT_NT_PCICMDSTS   = 0x4U,
     IDT_NT_PCIELCAP    = 0x4CU,
+    IDT_NT_PCIELCTLSTS = 0x50U,
     IDT_NT_NTCTL       = 0x400U,
     IDT_NT_NTINTSTS    = 0x404U,
     IDT_NT_OUTDBELLSET = 0x420U,
@@ -155,6 +156,7 @@ enum idt_config_registers {
 enum idt_config_registers_values {
     VALUE_NT_PCIELCAP_VM1 = (0x0U << 24), /* Local port number is 0x0 */
     VALUE_NT_PCIELCAP_VM2 = (0x2U << 24),
+    VALUE_NT_PCIELCTLSTS = (0x1U << 16) | (0b100U << 20), /* Let it be a 4-lane gen1 */
     VALUE_NT_PCICMDSTS = (0x1U << 2), /* Bus Master is enabled */
     VALUE_NT_NTCTL = (0x1U << 1), /* Completion is enabled (CPEN flag) */
     VALUE_NT_NTINTSTS = (0x1U << 1),  /* Doorbell interrupt */
@@ -381,6 +383,9 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
         case IDT_NT_PCIELCAP:
             ret = (s->self_number == 0 ? VALUE_NT_PCIELCAP_VM1 : VALUE_NT_PCIELCAP_VM2);
             break;
+        case IDT_NT_PCIELCTLSTS:
+            ret = VALUE_NT_PCIELCTLSTS;
+            break;
         case IDT_NT_PCICMDSTS:
             ret = VALUE_NT_PCICMDSTS;
             break;
@@ -405,9 +410,9 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->db_inbound_mask);
             ret = s->db_inbound_mask;
             break;
-            default:
-                IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
-                ret = 0;
+        default:
+            IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
+            ret = 0;
     }
 
     IVSHMEM_DPRINTF("Read value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
