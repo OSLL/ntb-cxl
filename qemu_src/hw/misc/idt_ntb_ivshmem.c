@@ -153,7 +153,8 @@ enum idt_config_registers {
 };
 
 enum idt_config_registers_values {
-    VALUE_NT_PCIELCAP = (0x0U << 24), /* Local port number is 0x0 */
+    VALUE_NT_PCIELCAP_VM1 = (0x0U << 24), /* Local port number is 0x0 */
+    VALUE_NT_PCIELCAP_VM2 = (0x2U << 24),
     VALUE_NT_PCICMDSTS = (0x1U << 2), /* Bus Master is enabled */
     VALUE_NT_NTCTL = (0x1U << 1), /* Completion is enabled (CPEN flag) */
     VALUE_NT_NTINTSTS = (0x1U << 1),  /* Doorbell interrupt */
@@ -378,7 +379,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = get_gasadata(s);
             break;
         case IDT_NT_PCIELCAP:
-            ret = VALUE_NT_PCIELCAP;
+            ret = (s->self_number == 0 ? VALUE_NT_PCIELCAP_VM1 : VALUE_NT_PCIELCAP_VM2);
             break;
         case IDT_NT_PCICMDSTS:
             ret = VALUE_NT_PCICMDSTS;
