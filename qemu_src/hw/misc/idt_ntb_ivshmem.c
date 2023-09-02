@@ -115,6 +115,10 @@ struct IVShmemState {
     /* IDT interconnect */
     uint32_t self_number;
     int other_vm_id;
+
+    /* State registers */
+    uint64_t *sw_ntctl;
+    uint64_t *peer_sw_ntctl;
 };
 
 enum idt_registers {
@@ -135,8 +139,11 @@ enum idt_registers_values {
     VALUE_SWPORT2STS = VALUE_SWPORT0STS,
     VALUE_SWPART0STS = (0x1U << 5), /* Partition is enabled */
     VALUE_NTP0_PCIECMDSTS = (0x1U << 2), /* Bus Master is enabled */
-    VALUE_NTP0_NTCTL = (0x1 << 1), /* Completion is enabled (CPEN flag) */
     VALUE_NTP2_PCIECMDSTS = VALUE_NTP0_PCIECMDSTS,
+};
+
+enum idt_default_register_values {
+    VALUE_NTP0_NTCTL = (0x1 << 1), /* Completion is enabled (CPEN flag) */
     VALUE_NTP2_NTCTL = VALUE_NTP0_NTCTL,
 };
 
@@ -162,7 +169,6 @@ enum idt_config_registers_values {
     VALUE_NT_PCIELCAP_VM2 = (0x2U << 24),
     VALUE_NT_PCIELCTLSTS = (0x1U << 16) | (0b100U << 20), /* Let it be a 4-lane gen1 */
     VALUE_NT_PCICMDSTS = (0x1U << 2), /* Bus Master is enabled */
-    VALUE_NT_NTCTL = (0x1U << 1), /* Completion is enabled (CPEN flag) */
     VALUE_NT_NTINTSTS = (0x1U << 1),  /* Doorbell interrupt */
 };
 
@@ -186,6 +192,8 @@ enum idt_ivshmem_eventfds {
 enum idt_ivshmem_shm_addrs {
     SHM_VM1_ID = 0,
     SHM_VM2_ID,
+    SHM_VM1_NTCTL,
+    SHM_VM2_NTCTL,
     SHM_VM1_DB,
     SHM_VM2_DB,
     SHM_VM1_MSG0,
@@ -240,7 +248,7 @@ static uint64_t read_data_from_shm(IVShmemState *s, int index)
 static uint64_t get_gasadata(IVShmemState *s)
 {
     uint64_t ret;
-    switch (s->gasaaddr){
+    switch (s->gasaaddr) {
         case IDT_SW_SWPORT0STS:
             ret = VALUE_SWPORT0STS;
             break;
@@ -254,13 +262,13 @@ static uint64_t get_gasadata(IVShmemState *s)
             ret = VALUE_NTP0_PCIECMDSTS;
             break;
         case IDT_SW_NTP0_NTCTL:
-            ret = VALUE_NTP0_NTCTL;
+            ret = s->vm_id == 0 ? *s->sw_ntctl : *s->peer_sw_ntctl;
             break;
         case IDT_SW_NTP2_PCIECMDSTS:
             ret = VALUE_NTP2_PCIECMDSTS;
             break;
         case IDT_SW_NTP2_NTCTL:
-            ret = VALUE_NTP2_NTCTL;
+            ret = s->vm_id == 0 ? *s->peer_sw_ntctl : *s->sw_ntctl;
             break;
         default:
             IVSHMEM_DPRINTF("Not implemented gasadata read on reg 0x%lx\n", s->gasaaddr);
@@ -342,6 +350,9 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
         case GASADATA:
             write_gasadata(s, val);
             break;
+        case IDT_NT_NTCTL:
+            *s->sw_ntctl = val;
+            break;
         case IDT_NT_NTMTBLADDR:
             s->nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
             break;
@@ -400,7 +411,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = VALUE_NT_PCICMDSTS;
             break;
         case IDT_NT_NTCTL:
-            ret = VALUE_NT_NTCTL;
+            ret = *s->sw_ntctl;
             break;
         case IDT_NT_NTMTBLDATA:
             ret = get_nt_mtb_data(s);
@@ -1151,6 +1162,11 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 
     s->inbound = &bar_addr[s->vm_id == 0 ? SHM_VM1_MSG0 : SHM_VM2_MSG0];
     s->outbound = &bar_addr[s->vm_id == 0 ? SHM_VM2_MSG0 : SHM_VM1_MSG0];
+
+    s->sw_ntctl = &bar_addr[s->vm_id == 0 ? SHM_VM1_NTCTL : SHM_VM2_NTCTL];
+    s->peer_sw_ntctl = &bar_addr[s->vm_id == 0 ? SHM_VM2_NTCTL : SHM_VM1_NTCTL];
+    *s->sw_ntctl = s->vm_id == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
+    *s->peer_sw_ntctl = s->vm_id == 0 ? VALUE_NTP2_NTCTL : VALUE_NTP0_NTCTL;
 }
 
 static void ivshmem_exit(PCIDevice *dev)
