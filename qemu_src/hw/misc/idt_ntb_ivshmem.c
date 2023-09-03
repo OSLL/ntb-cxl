@@ -122,6 +122,7 @@ struct IVShmemState {
     /* State registers */
     uint64_t *sw_ntctl;
     uint64_t *peer_sw_ntctl;
+    uint64_t intsts;
 };
 
 enum idt_registers {
@@ -170,6 +171,10 @@ enum idt_config_registers {
 };
 
 enum msgsts_fields {
+    IDT_FLD_OUTMSGSTS0 = 0,
+    IDT_FLD_OUTMSGSTS1,
+    IDT_FLD_OUTMSGSTS2,
+    IDT_FLD_OUTMSGSTS3,
     IDT_FLD_INMSGSTS0 = 16,
     IDT_FLD_INMSGSTS1,
     IDT_FLD_INMSGSTS2,
@@ -181,7 +186,6 @@ enum idt_config_registers_values {
     VALUE_NT_PCIELCAP_VM2 = (0x2U << 24),
     VALUE_NT_PCIELCTLSTS = (0x1U << 16) | (0b100U << 20), /* Let it be a 4-lane gen1 */
     VALUE_NT_PCICMDSTS = (0x1U << 2), /* Bus Master is enabled */
-    VALUE_NT_NTINTSTS = (0x1U << 1),  /* Doorbell interrupt */
 };
 
 enum idt_pci_config_registers {
@@ -218,6 +222,12 @@ enum idt_ivshmem_shm_addrs {
     SHM_VM2_MSG1,
     SHM_VM2_MSG2,
     SHM_VM2_MSG3,
+};
+
+enum idt_interrupts {
+    IDT_NTINTSTS_MSG = 0x1U,
+    IDT_NTINTSTS_DBELL = 0x2U,
+    IDT_NTINTSTS_SEVENT = 0x8U,
 };
 
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
@@ -373,8 +383,11 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
         case IDT_NT_OUTMSG0:
             if (*s->peer_msgsts & (0x1U << IDT_FLD_INMSGSTS0))
             {
-                IVSHMEM_DPRINTF("Refusing to write to a 'full' register (INMSGSTS0 is non-zero) vm%d 0x%lx\n", s->vm_id + 1, *s->peer_msgsts);
-                // TODO: interrupt
+                IVSHMEM_DPRINTF("Refusing to write to msg register, INMSGSTS0 is non-zero (vm%d 0x%lx)\n",
+                        s->vm_id + 1, *s->peer_msgsts);
+                *s->msgsts |= (0x1U << IDT_FLD_OUTMSGSTS0); /* Set the error status */
+                s->intsts = IDT_NTINTSTS_MSG;
+                interrupt_notify(s, 0);
                 break;
             }
 
@@ -409,7 +422,8 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             break;
         case IDT_NT_MSGSTS:
             *s->msgsts = (*s->msgsts ^ (*s->msgsts & val));
-            IVSHMEM_DPRINTF("Cleared the local MSGSTS, new value: 0x%lx (vm%d)\n", *s->msgsts, s->vm_id + 1);
+            IVSHMEM_DPRINTF("Cleared the local MSGSTS, new value: 0x%lx (vm%d)\n",
+                    *s->msgsts, s->vm_id + 1);
             break;
         case IDT_NT_MSGSTSMSK:
             s->msgsts_mask = val;
@@ -448,7 +462,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = get_nt_mtb_data(s);
             break;
         case IDT_NT_NTINTSTS:  /* used when handling interrupts */
-            ret = VALUE_NT_NTINTSTS;
+            ret = s->intsts;
             break;
         case IDT_NT_INMSG0:
             IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register\n", s->inbound[0]);
@@ -502,17 +516,20 @@ static void ivshmem_vector_notify(void *opaque)
         return;
     }
 
+    /* TODO: honor interrupt masks */
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
     switch (vector) {
-        case 0:
+        case EVENTFD_VM_ID:
             s->other_vm_id = read_other_vm_id(s);
             break;
-        case 1:
-            IVSHMEM_DPRINTF("Received value 0x%x to the inbound doorbell\n", *s->db_inbound);
-            // TODO: maybe need to send an interrupt?
+        case EVENTFD_DBELL:
+            IVSHMEM_DPRINTF("Notifying host of a INDBELLSTS update, value: 0x%x\n", *s->db_inbound);
+            s->intsts = IDT_NTINTSTS_DBELL;
+            interrupt_notify(s, 0);
             break;
-        case 2:
-            IVSHMEM_DPRINTF("Read value 0x%lx to the inbound message register\n", s->inbound[0]);
+        case EVENTFD_MSG:
+            IVSHMEM_DPRINTF("Notifying host of a MSGSTS update, value: 0x%lx\n", s->inbound[0]);
+            s->intsts = IDT_NTINTSTS_MSG;
             interrupt_notify(s, 0);
             break;
         default:
@@ -1193,7 +1210,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
                      PCI_BASE_ADDRESS_MEM_TYPE_64,
                      s->ivshmem_bar2);
 
-    // Initialize pointers to various outbound registers
+    /* Initialize pointers to various outbound registers */
     bar_addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
 
     s->db_inbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM1_DB : SHM_VM2_DB];
