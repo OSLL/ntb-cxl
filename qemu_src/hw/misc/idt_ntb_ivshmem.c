@@ -161,7 +161,13 @@ enum idt_config_registers {
     IDT_NT_INDBELLSTS  = 0x428U,
     IDT_NT_INDBELLMSK  = 0x42CU,
     IDT_NT_OUTMSG0     = 0x430U,
+    IDT_NT_OUTMSG1     = 0x434U,
+    IDT_NT_OUTMSG2     = 0x438U,
+    IDT_NT_OUTMSG3     = 0x43CU,
     IDT_NT_INMSG0      = 0x440U,
+    IDT_NT_INMSG1      = 0x444U,
+    IDT_NT_INMSG2      = 0x448U,
+    IDT_NT_INMSG3      = 0x44CU,
     IDT_NT_MSGSTS      = 0x460U,
     IDT_NT_MSGSTSMSK   = 0x464U,
     IDT_NT_NTMTBLADDR  = 0x4D0U,
@@ -267,6 +273,35 @@ static uint64_t read_data_from_shm(IVShmemState *s, int index)
     uint64_t *addr;
     addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
     return addr[index];
+}
+
+static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
+{
+    if ((index < 0) || (index > 3))
+    {
+        error_report("idt-ntb-ivshmem: invalid msg register index");
+        return;
+    }
+
+    if (*s->peer_msgsts & (0x1U << (IDT_FLD_INMSGSTS0 + index)))
+    {
+        IVSHMEM_DPRINTF("Refusing to write to msg register, INMSGSTS%d is non-zero (vm%d 0x%lx)\n",
+                index, s->vm_id + 1, *s->peer_msgsts);
+        *s->msgsts |= (0x1U << (IDT_FLD_OUTMSGSTS0 + index)); /* Set the error status */
+        s->intsts = IDT_NTINTSTS_MSG;
+        interrupt_notify(s, 0);
+        return;
+    }
+
+    s->outbound[index] = val;
+    IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register %d\n", val, index);
+
+    if (s->other_vm_id != -1)
+    {
+        *s->peer_msgsts |= (0x1U << (IDT_FLD_INMSGSTS0 + index));
+        event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_MSG]);
+        IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
+    }
 }
 
 static uint64_t get_gasadata(IVShmemState *s)
@@ -381,25 +416,16 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             s->nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
             break;
         case IDT_NT_OUTMSG0:
-            if (*s->peer_msgsts & (0x1U << IDT_FLD_INMSGSTS0))
-            {
-                IVSHMEM_DPRINTF("Refusing to write to msg register, INMSGSTS0 is non-zero (vm%d 0x%lx)\n",
-                        s->vm_id + 1, *s->peer_msgsts);
-                *s->msgsts |= (0x1U << IDT_FLD_OUTMSGSTS0); /* Set the error status */
-                s->intsts = IDT_NTINTSTS_MSG;
-                interrupt_notify(s, 0);
-                break;
-            }
-
-            s->outbound[0] = val;
-            IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register 0\n", val);
-
-            if (s->other_vm_id != -1)
-            {
-                *s->peer_msgsts |= (0x1U << IDT_FLD_INMSGSTS0);
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_MSG]);
-                IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
-            }
+            write_outbound_msg(s, 0, val);
+            break;
+        case IDT_NT_OUTMSG1:
+            write_outbound_msg(s, 1, val);
+            break;
+        case IDT_NT_OUTMSG2:
+            write_outbound_msg(s, 2, val);
+            break;
+        case IDT_NT_OUTMSG3:
+            write_outbound_msg(s, 3, val);
             break;
         case IDT_NT_OUTDBELLSET:
             *s->db_outbound = val;
@@ -465,8 +491,20 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = s->intsts;
             break;
         case IDT_NT_INMSG0:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register\n", s->inbound[0]);
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", s->inbound[0], 0);
             ret = s->inbound[0];
+            break;
+        case IDT_NT_INMSG1:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", s->inbound[1], 1);
+            ret = s->inbound[1];
+            break;
+        case IDT_NT_INMSG2:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", s->inbound[2], 2);
+            ret = s->inbound[2];
+            break;
+        case IDT_NT_INMSG3:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", s->inbound[3], 3);
+            ret = s->inbound[3];
             break;
         case IDT_NT_INDBELLSTS:
             IVSHMEM_DPRINTF("Read value 0x%x from the inbound doorbell register\n", *s->db_inbound);
