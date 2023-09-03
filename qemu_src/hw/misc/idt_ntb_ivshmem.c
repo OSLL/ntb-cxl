@@ -106,6 +106,9 @@ struct IVShmemState {
     uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
     uint64_t *inbound;  /* Inbound messages */
     uint64_t *outbound;  /* Outbound messages */
+    uint64_t *msgsts; /* Inbound/outbound messages status */
+    uint64_t *peer_msgsts;
+    uint64_t msgsts_mask;
     /* Not implemented */
     /* uint8_t srcbound[4]; */  /* Src partition of messages */
     uint32_t *db_inbound;  /* Inbound doorbell (related to patrition 0?) */
@@ -158,10 +161,19 @@ enum idt_config_registers {
     IDT_NT_INDBELLMSK  = 0x42CU,
     IDT_NT_OUTMSG0     = 0x430U,
     IDT_NT_INMSG0      = 0x440U,
+    IDT_NT_MSGSTS      = 0x460U,
+    IDT_NT_MSGSTSMSK   = 0x464U,
     IDT_NT_NTMTBLADDR  = 0x4D0U,
     IDT_NT_NTMTBLDATA  = 0x4D8U,
     GASAADDR           = 0xFF8U,
     GASADATA           = 0xFFCU,
+};
+
+enum msgsts_fields {
+    IDT_FLD_INMSGSTS0 = 16,
+    IDT_FLD_INMSGSTS1,
+    IDT_FLD_INMSGSTS2,
+    IDT_FLD_INMSGSTS3,
 };
 
 enum idt_config_registers_values {
@@ -196,10 +208,12 @@ enum idt_ivshmem_shm_addrs {
     SHM_VM2_NTCTL,
     SHM_VM1_DB,
     SHM_VM2_DB,
+    SHM_VM1_MSGSTS,
     SHM_VM1_MSG0,
     SHM_VM1_MSG1,
     SHM_VM1_MSG2,
     SHM_VM1_MSG3,
+    SHM_VM2_MSGSTS,
     SHM_VM2_MSG0,
     SHM_VM2_MSG1,
     SHM_VM2_MSG2,
@@ -357,11 +371,19 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             s->nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
             break;
         case IDT_NT_OUTMSG0:
+            if (*s->peer_msgsts & (0x1U << IDT_FLD_INMSGSTS0))
+            {
+                IVSHMEM_DPRINTF("Refusing to write to a 'full' register (INMSGSTS0 is non-zero) vm%d 0x%lx\n", s->vm_id + 1, *s->peer_msgsts);
+                // TODO: interrupt
+                break;
+            }
+
             s->outbound[0] = val;
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register 0\n", val);
 
             if (s->other_vm_id != -1)
             {
+                *s->peer_msgsts |= (0x1U << IDT_FLD_INMSGSTS0);
                 event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_MSG]);
                 IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
             }
@@ -377,12 +399,21 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             }
             break;
         case IDT_NT_INDBELLSTS:
+            /* TODO: seems like it should be implemented like IDT_NT_MSGSTS below */
             *s->db_inbound = val;
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the inbound doorbell\n", val);
             break;
         case IDT_NT_INDBELLMSK:
             s->db_inbound_mask = val;
             IVSHMEM_DPRINTF("Set the inbound doorbell mask to value 0x%lx\n", val);
+            break;
+        case IDT_NT_MSGSTS:
+            *s->msgsts = (*s->msgsts ^ (*s->msgsts & val));
+            IVSHMEM_DPRINTF("Cleared the local MSGSTS, new value: 0x%lx (vm%d)\n", *s->msgsts, s->vm_id + 1);
+            break;
+        case IDT_NT_MSGSTSMSK:
+            s->msgsts_mask = val;
+            IVSHMEM_DPRINTF("Set the local MSGSTSMSK to value 0x%lx\n", val);
             break;
         default:
             IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
@@ -431,6 +462,14 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->db_inbound_mask);
             ret = s->db_inbound_mask;
             break;
+        case IDT_NT_MSGSTS:
+            IVSHMEM_DPRINTF("Read the local MSGSTS: 0x%lx\n", *s->msgsts);
+            ret = *s->msgsts;
+            break;
+        case IDT_NT_MSGSTSMSK:
+            IVSHMEM_DPRINTF("Read the local MSGSTSMSK: 0x%lx\n", s->msgsts_mask);
+            ret = s->msgsts_mask;
+            break;
         default:
             IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
             ret = 0;
@@ -477,7 +516,7 @@ static void ivshmem_vector_notify(void *opaque)
             interrupt_notify(s, 0);
             break;
         default:
-            error_report("idt-ntb-ivshmem: event interrupt on unknown vector %d\n", vector);
+            error_report("idt-ntb-ivshmem: event interrupt on unknown vector %d", vector);
             break;
     }
 }
@@ -1162,6 +1201,8 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 
     s->inbound = &bar_addr[s->vm_id == 0 ? SHM_VM1_MSG0 : SHM_VM2_MSG0];
     s->outbound = &bar_addr[s->vm_id == 0 ? SHM_VM2_MSG0 : SHM_VM1_MSG0];
+    s->msgsts = &bar_addr[s->vm_id == 0 ? SHM_VM1_MSGSTS : SHM_VM2_MSGSTS];
+    s->peer_msgsts = &bar_addr[s->vm_id == 0 ? SHM_VM2_MSGSTS : SHM_VM1_MSGSTS];
 
     s->sw_ntctl = &bar_addr[s->vm_id == 0 ? SHM_VM1_NTCTL : SHM_VM2_NTCTL];
     s->peer_sw_ntctl = &bar_addr[s->vm_id == 0 ? SHM_VM2_NTCTL : SHM_VM1_NTCTL];
