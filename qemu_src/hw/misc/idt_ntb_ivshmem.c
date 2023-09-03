@@ -421,7 +421,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Set the inbound doorbell mask to value 0x%lx\n", val);
             break;
         case IDT_NT_MSGSTS:
-            *s->msgsts = (*s->msgsts ^ (*s->msgsts & val));
+            *s->msgsts &= ~val; /* Substraction with a module of 2 */
             IVSHMEM_DPRINTF("Cleared the local MSGSTS, new value: 0x%lx (vm%d)\n",
                     *s->msgsts, s->vm_id + 1);
             break;
