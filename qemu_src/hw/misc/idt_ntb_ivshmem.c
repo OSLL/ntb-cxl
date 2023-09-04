@@ -79,9 +79,6 @@ struct IVShmemState {
     HostMemoryBackend *hostmem; /* with interrupts */
     CharBackend server_chr; /* without interrupts */
 
-    /* registers */
-    int vm_id;
-
     /* BARs */
     MemoryRegion ivshmem_mmio;  /* BAR 0 (registers) */
     MemoryRegion *ivshmem_bar2; /* BAR 2 (shared memory) */
@@ -114,7 +111,10 @@ struct IVShmemState {
 
     /* IDT interconnect */
     uint32_t self_number;
+    int vm_id;
     int other_vm_id;
+    int *vm_id_shared;
+    int *other_vm_id_shared;
 };
 
 enum idt_registers {
@@ -288,27 +288,12 @@ static uint64_t get_nt_mtb_data(IVShmemState *s)
  *****************************************
  */
 
-
-static void write_vm_id(IVShmemState *s)
-{
-    int *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    addr[s->self_number == 0 ? SHM_VM1_ID : SHM_VM2_ID] = s->vm_id;
-}
-
-static int read_other_vm_id(IVShmemState *s)
-{
-    int *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    return addr[s->self_number == 0 ? SHM_VM2_ID : SHM_VM1_ID];
-}
-
 static void init_vm_ids(IVShmemState *s)
 {
-    write_vm_id(s);
-    if(s->self_number){
+    *s->vm_id_shared = s->vm_id;
+    if (s->self_number) {
         /* Second vm */
-        s->other_vm_id = read_other_vm_id(s);
+        s->other_vm_id = *s->other_vm_id_shared;
         event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_VM_ID]);
     }
     IVSHMEM_DPRINTF("Started vm with self_number=%d and vm_id=%d\n", s->self_number, s->vm_id);
@@ -439,7 +424,7 @@ static void ivshmem_vector_notify(void *opaque)
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
     switch (vector) {
         case 0:
-            s->other_vm_id = read_other_vm_id(s);
+            s->other_vm_id = *s->other_vm_id_shared;
             break;
         case 1:
             IVSHMEM_DPRINTF("Received value 0x%x to the inbound doorbell\n", *s->db_inbound);
@@ -1129,6 +1114,9 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 
     // Initialize pointers to various outbound registers
     bar_addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
+
+    s->vm_id_shared = (int *)&bar_addr[s->vm_id == 0 ? SHM_VM1_ID : SHM_VM2_ID];
+    s->other_vm_id_shared = (int *)&bar_addr[s->vm_id == 0 ? SHM_VM2_ID : SHM_VM1_ID];
 
     s->db_inbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM1_DB : SHM_VM2_DB];
     s->db_outbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM2_DB : SHM_VM1_DB];
