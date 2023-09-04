@@ -438,9 +438,8 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             }
             break;
         case IDT_NT_INDBELLSTS:
-            /* TODO: seems like it should be implemented like IDT_NT_MSGSTS below */
-            *s->db_inbound = val;
-            IVSHMEM_DPRINTF("Wrote value 0x%lx to the inbound doorbell\n", val);
+            *s->db_inbound &= ~val; /* Substraction with a module of 2 */
+            IVSHMEM_DPRINTF("Cleared the inbound doorbell, new value: 0x%x\n", *s->db_inbound);
             break;
         case IDT_NT_INDBELLMSK:
             s->db_inbound_mask = val;
