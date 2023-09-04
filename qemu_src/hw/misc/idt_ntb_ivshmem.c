@@ -8,7 +8,7 @@
  * Based On: ivshmem.c
  *          Copyright (c) 20?? Cam Macdonell <cam@cs.ualberta.ca>
  *
- * 
+ *
  */
 
 #include "qemu/osdep.h"
@@ -46,7 +46,7 @@
 
 #define IVSHMEM_REG_BAR_SIZE 0x1000
 
-#define IVSHMEM_DEBUG 0
+#define IVSHMEM_DEBUG 1
 #define IVSHMEM_DPRINTF(fmt, ...)                       \
     do {                                                \
         if (IVSHMEM_DEBUG) {                            \
@@ -112,6 +112,7 @@ struct IVShmemState {
     /* Not implemented */
     /* uint8_t srcbound[4]; */  /* Src partition of messages */
     uint32_t db_inbound;  /* Inbound doorbell (related to patrition 0?) */
+    uint32_t db_inbound_mask; /* Inbould doorbell mask */
     uint32_t db_outbound;  /* Outbound doorbell (related to partition 0?) */
 
     /* IDT interconnect */
@@ -144,6 +145,8 @@ enum idt_config_registers {
     IDT_NT_NTCTL       = 0x400U,
     IDT_NT_NTINTSTS    = 0x404U,
     IDT_NT_OUTDBELLSET = 0x420U,
+    IDT_NT_INDBELLSTS  = 0x428U,
+    IDT_NT_INDBELLMSK  = 0x42CU,
     IDT_NT_OUTMSG0     = 0x430U,
     IDT_NT_INMSG0      = 0x440U,
     IDT_NT_NTMTBLADDR  = 0x4D0U,
@@ -170,6 +173,12 @@ enum idt_pci_config_registers_value {
                          (0x1U << 31), /* TODO: What is it? */
 };
 
+enum idt_ivshmem_eventfds {
+    EVENTFD_VM_ID = 0,
+    EVENTFD_DBELL,
+    EVENTFD_MSG,
+};
+
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
 {
     return (ivs->features & (1 << feature));
@@ -181,7 +190,7 @@ static inline bool ivshmem_is_master(IVShmemState *s)
     return s->master == ON_OFF_AUTO_ON;
 }
 
-static void intterupt_notify(IVShmemState *s, unsigned int vector)
+static void interrupt_notify(IVShmemState *s, unsigned int vector)
 {
     /* Use different types of notification:
      * - Wired (LEGACY) (Not implemented)
@@ -209,12 +218,22 @@ static uint64_t read_data_from_shm(IVShmemState *s, int index)
     return addr[index];
 }
 
-static void write_outbound_register(IVShmemState *s)
+static void shm_write_outbound_register(IVShmemState *s)
 {
     write_data_to_shm(s, IVSHMEM_IDT_OUTREG_INDEX, s->outbound[0]);
 }
 
-static uint64_t read_outbound_register(IVShmemState *s)
+static uint64_t shm_read_outbound_register(IVShmemState *s)
+{
+    return read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
+}
+
+static void shm_write_outbound_db(IVShmemState *s)
+{
+    write_data_to_shm(s, IVSHMEM_IDT_OUTREG_INDEX, s->db_outbound);
+}
+
+static uint64_t shm_read_outbound_db(IVShmemState *s)
 {
     return read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
 }
@@ -298,7 +317,7 @@ static void init_vm_ids(IVShmemState *s)
     if(s->self_number){
         /* Second vm */
         s->other_vm_id = read_other_vm_id(s);
-        event_notifier_set(&s->peers[s->other_vm_id].eventfds[0]);
+        event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_VM_ID]);
     }
     IVSHMEM_DPRINTF("Started vm with self_number=%d and vm_id=%d\n", s->self_number, s->vm_id);
 }
@@ -311,7 +330,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
     IVShmemState *s = opaque;
 
     IVSHMEM_DPRINTF("Writing to addr " HWADDR_FMT_plx " value 0x%lx\n", addr, val);
-    switch (addr){
+    switch (addr) {
         case GASAADDR:
             s->gasaaddr = val;
             break;
@@ -323,17 +342,34 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             break;
         case IDT_NT_OUTMSG0:
             s->outbound[0] = val;
-            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound register 0\n", val);
+            shm_write_outbound_register(s);
+            IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register 0\n", val);
+
+            if (s->other_vm_id != -1)
+            {
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_MSG]);
+                IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
+            }
             break;
         case IDT_NT_OUTDBELLSET:
             s->db_outbound = val;
             s->db_inbound = s->db_outbound;
-            IVSHMEM_DPRINTF("Writed value 0x%lx to the outbound doorbell\n", val);
-            write_outbound_register(s);
-            if (s->other_vm_id != -1){
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[1]);
-                IVSHMEM_DPRINTF("Sended msg interrupt from %d to %d\n", s->vm_id, s->other_vm_id);
+            shm_write_outbound_db(s);
+            IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound doorbell\n", val);
+
+            if (s->other_vm_id != -1)
+            {
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_DBELL]);
+                IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
             }
+            break;
+        case IDT_NT_INDBELLSTS:
+            s->db_inbound = val;
+            IVSHMEM_DPRINTF("Wrote value 0x%lx to the inbound doorbell\n", val);
+            break;
+        case IDT_NT_INDBELLMSK:
+            s->db_inbound_mask = val;
+            IVSHMEM_DPRINTF("Set the inbound doorbell mask to value 0x%lx\n", val);
             break;
         default:
             IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
@@ -368,15 +404,23 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = VALUE_NT_NTINTSTS;
             break;
         case IDT_NT_INMSG0:
-            IVSHMEM_DPRINTF("Readed value 0x%lx from inbound register\n", s->inbound[0]);
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register\n", s->inbound[0]);
             ret = s->inbound[0];
             break;
-        default:
-            IVSHMEM_DPRINTF("why are we reading " HWADDR_FMT_plx "\n", addr);
-            ret = 0;
+        case IDT_NT_INDBELLSTS:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound doorbell register\n", s->db_inbound);
+            ret = s->db_inbound;
+            break;
+        case IDT_NT_INDBELLMSK:
+            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%lx\n", s->db_inbound_mask);
+            ret = s->db_inbound_mask;
+            break;
+            default:
+                IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
+                ret = 0;
     }
 
-    IVSHMEM_DPRINTF("Readed value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
+    IVSHMEM_DPRINTF("Read value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
     return ret;
 }
 
@@ -399,18 +443,28 @@ static void ivshmem_vector_notify(void *opaque)
     EventNotifier *n = &s->peers[s->vm_id].eventfds[vector];
 
     if (!event_notifier_test_and_clear(n)) {
+        IVSHMEM_DPRINTF("Event notifier error\n");
         return;
     }
 
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
-    if(vector == 0){
-        s->other_vm_id = read_other_vm_id(s);
-    }else{
-        s->inbound[0] = read_outbound_register(s);
-        IVSHMEM_DPRINTF("Readed value 0x%lx from shm outbound register\n", s->inbound[0]);
-        intterupt_notify(s, 0);
+    switch (vector) {
+        case 0:
+            s->other_vm_id = read_other_vm_id(s);
+            break;
+        case 1:
+            s->db_inbound = shm_read_outbound_db(s);
+            IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm doorbell to the inbound\n", s->db_inbound);
+            break;
+        case 2:
+            s->inbound[0] = shm_read_outbound_register(s);
+            IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm register\n", s->inbound[0]);
+            interrupt_notify(s, 0);
+            break;
+        default:
+            error_report("idt-ntb-ivshmem: event interrupt on unknown vector %d\n", vector);
+            break;
     }
-    return;
 }
 
 static int ivshmem_vector_unmask(PCIDevice *dev, unsigned vector,

@@ -20,8 +20,9 @@ DESTDIR="$ROOT_PROJECT_PATH"/yocto_files/$LAYER_NAME/recipes-devtools/qemu
 mkdir -p "$DESTDIR"
 cd ../$LAYER_NAME/recipes-devtools/qemu
 
+# TODO: PATCH_DIR is empty, wrong patch removing
 # obsolete patches will remain here, remove them
-# rm -r "$DESTDIR"/$RECIPE_NAME || true
+# rm -r "$DESTDIR/$PATCH_DIR" || true
 
 cp -Tru $DIR_WITH_PATCHES "$DESTDIR/$DIR_WITH_PATCHES"
 cp $RECIPE_NAME\_8.0.2.bbappend "$DESTDIR"

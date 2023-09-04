@@ -65,7 +65,7 @@ To see default values of that options, refer to the script itself.
 QEMU development can be done both on a host system and with Docker
 
 Before starting, the project should be built and the command
-`./run_container --command=enter_qemu_devenv` should be executed.
+`./run_container.sh --command=enter_qemu_devenv` should be executed.
 After successful execution, the path to checkouted QEMU source repository
 relative to selected build directory will be printed out
 
@@ -81,7 +81,53 @@ into this repository to `yocto_files`. When QEMU development is finished,
 QEMU rebuild is required. This can be done with
 `./run_container.sh --command=build --build=qemu` command
 
-
 When using host system, you may also try to use various other useful [devtool]
 (https://docs.yoctoproject.org/kernel-dev/common.html#using-devtool-to-patch-the-kernel)
 functions.
+
+## Testing the IDT NTB QEMU device
+
+### `ntb_pingpong`
+
+```ShellSession
+$ ./run_container.sh --command=run_vms
+```
+QEMU should report that something is transferred over out NTB device.
+Also, the counter in debugfs should increase over time:
+```ShellSession
+$ ssh root@localhost -p7001
+# cat /sys/kernel/debug/ntb_pingpong/*/count
+```
+
+### `ntb_tool`
+
+```ShellSession
+$ ./run_container.sh --command=run_vms --cmdline-common="initcall_blacklist=pp_init"
+```
+(needed to load `ntb_tool` instead of `ntb_pingpong`, both are built-in modules currently)
+
+VM1:
+```ShellSession
+$ ssh root@localhost -p7001
+# cd /sys/kernel/debug/ntb_tool/*
+# echo 's 0xdeadbeef' >peer_db
+```
+
+VM2:
+```ShellSession
+$ ssh root@localhost -p7002
+# cd /sys/kernel/debug/ntb_tool/*
+# cat db
+0xdeadbeef
+```
+
+This is the basic usage.
+Also, setting the peer_mask should work.
+See [the kernel documentation](
+https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool)
+for the full usage.
+
+The one thing that is not documented there are the message registers.
+Currently, only passing `msg0` should work.
+It works like `db` and `peer_db`.
+Write to `peer0/msg0`, read from `msg0`.
