@@ -14,4 +14,17 @@ S = "${WORKDIR}/git"
 # The inherit of module.bbclass will automatically name module packages with
 # "kernel-module-" prefix as required by the oe-core build environment.
 
+EXTRA_OEMAKE += "KSRC=${STAGING_KERNEL_DIR}"
+
+do_compile() {
+unset CFLAGS CPPFLAGS CXXFLAGS LDFLAGS
+	oe_runmake KERNEL_PATH=${STAGING_KERNEL_DIR}   \
+		   KERNEL_VERSION=${KERNEL_VERSION}    \
+		   CC="${KERNEL_CC}" LD="${KERNEL_LD}" \
+		   AR="${KERNEL_AR}" \
+	           O=${STAGING_KERNEL_BUILDDIR} \
+		   KBUILD_EXTRA_SYMBOLS="${KBUILD_EXTRA_SYMBOLS}" \
+		   modules
+}
+
 RPROVIDES:${PN} += "kernel-module-ntrdma"
