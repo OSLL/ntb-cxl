@@ -178,17 +178,17 @@ enum idt_ivshmem_eventfds {
 
 enum idt_ivshmem_shm_addrs {
     SHM_VM1_ID = 0,
-    SHM_VM2_ID,
-    SHM_VM1_DB,
-    SHM_VM2_DB,
-    SHM_VM1_MSG0,
-    SHM_VM1_MSG1,
-    SHM_VM1_MSG2,
-    SHM_VM1_MSG3,
-    SHM_VM2_MSG0,
-    SHM_VM2_MSG1,
-    SHM_VM2_MSG2,
-    SHM_VM2_MSG3,
+    SHM_VM2_ID = 4,
+    SHM_VM1_DB = 8,
+    SHM_VM2_DB = 12,
+    SHM_VM1_MSG0 = 16,
+    SHM_VM1_MSG1 = 24,
+    SHM_VM1_MSG2 = 32,
+    SHM_VM1_MSG3 = 40,
+    SHM_VM2_MSG0 = 48,
+    SHM_VM2_MSG1 = 56,
+    SHM_VM2_MSG2 = 64,
+    SHM_VM2_MSG3 = 72,
 };
 
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
@@ -218,14 +218,14 @@ static void interrupt_notify(IVShmemState *s, unsigned int vector)
 
 static void write_data_to_shm(IVShmemState *s, int index, uint64_t val)
 {
-    uint64_t *addr;
+    uint8_t *addr;
     addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
     addr[index] = val;
 }
 
 static uint64_t read_data_from_shm(IVShmemState *s, int index)
 {
-    uint64_t *addr;
+    uint8_t *addr;
     addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
     return addr[index];
 }
@@ -1028,7 +1028,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     IVShmemState *s = IVSHMEM_NTB_IDT(dev);
     Error *err = NULL;
     uint8_t *pci_conf;
-    uint64_t *bar_addr;
+    uint8_t *bar_addr;
 
     /* IRQFD requires MSI */
     if (ivshmem_has_feature(s, IVSHMEM_IOEVENTFD) &&
@@ -1121,8 +1121,8 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     s->db_inbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM1_DB : SHM_VM2_DB];
     s->db_outbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM2_DB : SHM_VM1_DB];
 
-    s->inbound = &bar_addr[s->vm_id == 0 ? SHM_VM1_MSG0 : SHM_VM2_MSG0];
-    s->outbound = &bar_addr[s->vm_id == 0 ? SHM_VM2_MSG0 : SHM_VM1_MSG0];
+    s->inbound = (uint64_t *)&bar_addr[s->vm_id == 0 ? SHM_VM1_MSG0 : SHM_VM2_MSG0];
+    s->outbound = (uint64_t *)&bar_addr[s->vm_id == 0 ? SHM_VM2_MSG0 : SHM_VM1_MSG0];
 }
 
 static void ivshmem_exit(PCIDevice *dev)
