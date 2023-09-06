@@ -113,8 +113,8 @@ struct IVShmemState {
     uint32_t self_number;
     int vm_id;
     int other_vm_id;
-    int *vm_id_shared;
-    int *other_vm_id_shared;
+    uint32_t *vm_id_shared;
+    uint32_t *other_vm_id_shared;
 };
 
 enum idt_registers {
@@ -177,7 +177,7 @@ enum idt_ivshmem_eventfds {
 };
 
 struct idt_ivshmem_vm_shm_storage {
-    int id;
+    uint32_t id;
     uint32_t db;
     uint64_t msg[4];
 };
