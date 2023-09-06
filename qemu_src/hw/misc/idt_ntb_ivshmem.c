@@ -212,26 +212,6 @@ static void interrupt_notify(IVShmemState *s, unsigned int vector)
     /* msix_notify(pdev, vector); */
 }
 
-static void write_data_to_shm(IVShmemState *s, int index, uint64_t val)
-{
-    uint64_t *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2) +
-	    (sizeof(struct idt_ivshmem_shm_storage) % sizeof(*addr) == 0 ?
-	     sizeof(struct idt_ivshmem_shm_storage) / sizeof(*addr) :
-	     sizeof(struct idt_ivshmem_shm_storage) / sizeof(*addr) + 1);
-    addr[index] = val;
-}
-
-static uint64_t read_data_from_shm(IVShmemState *s, int index)
-{
-    uint64_t *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2) +
-	    (sizeof(struct idt_ivshmem_shm_storage) % sizeof(*addr) == 0 ?
-	     sizeof(struct idt_ivshmem_shm_storage) / sizeof(*addr) :
-	     sizeof(struct idt_ivshmem_shm_storage) / sizeof(*addr) + 1);
-    return addr[index];
-}
-
 static uint64_t get_gasadata(IVShmemState *s)
 {
     uint64_t ret;
