@@ -79,9 +79,6 @@ struct IVShmemState {
     HostMemoryBackend *hostmem; /* with interrupts */
     CharBackend server_chr; /* without interrupts */
 
-    /* registers */
-    int vm_id;
-
     /* BARs */
     MemoryRegion ivshmem_mmio;  /* BAR 0 (registers) */
     MemoryRegion *ivshmem_bar2; /* BAR 2 (shared memory) */
@@ -117,12 +114,15 @@ struct IVShmemState {
 
     /* IDT interconnect */
     uint32_t self_number;
+    int vm_id;
     int other_vm_id;
 
     /* State registers */
     uint64_t *sw_ntctl;
     uint64_t *peer_sw_ntctl;
     uint64_t intsts;
+    uint32_t *vm_id_shared;
+    uint32_t *other_vm_id_shared;
 };
 
 enum idt_registers {
@@ -211,23 +211,17 @@ enum idt_ivshmem_eventfds {
     EVENTFD_MSG,
 };
 
-enum idt_ivshmem_shm_addrs {
-    SHM_VM1_ID = 0,
-    SHM_VM2_ID,
-    SHM_VM1_NTCTL,
-    SHM_VM2_NTCTL,
-    SHM_VM1_DB,
-    SHM_VM2_DB,
-    SHM_VM1_MSGSTS,
-    SHM_VM1_MSG0,
-    SHM_VM1_MSG1,
-    SHM_VM1_MSG2,
-    SHM_VM1_MSG3,
-    SHM_VM2_MSGSTS,
-    SHM_VM2_MSG0,
-    SHM_VM2_MSG1,
-    SHM_VM2_MSG2,
-    SHM_VM2_MSG3,
+struct idt_ivshmem_vm_shm_storage {
+    uint32_t id;
+    uint32_t db;
+    uint64_t ntctl;
+    uint64_t msgsts;
+    uint64_t msg[4];
+};
+
+struct idt_ivshmem_shm_storage {
+    struct idt_ivshmem_vm_shm_storage vm1;
+    struct idt_ivshmem_vm_shm_storage vm2;
 };
 
 enum idt_interrupts {
@@ -259,20 +253,6 @@ static void interrupt_notify(IVShmemState *s, unsigned int vector)
     msi_notify(&s->parent_obj, vector);
     /* MSI-X */
     /* msix_notify(pdev, vector); */
-}
-
-static void write_data_to_shm(IVShmemState *s, int index, uint64_t val)
-{
-    uint64_t *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    addr[index] = val;
-}
-
-static uint64_t read_data_from_shm(IVShmemState *s, int index)
-{
-    uint64_t *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    return addr[index];
 }
 
 static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
@@ -368,27 +348,12 @@ static uint64_t get_nt_mtb_data(IVShmemState *s)
  *****************************************
  */
 
-
-static void write_vm_id(IVShmemState *s)
-{
-    int *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    addr[s->self_number == 0 ? SHM_VM1_ID : SHM_VM2_ID] = s->vm_id;
-}
-
-static int read_other_vm_id(IVShmemState *s)
-{
-    int *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    return addr[s->self_number == 0 ? SHM_VM2_ID : SHM_VM1_ID];
-}
-
 static void init_vm_ids(IVShmemState *s)
 {
-    write_vm_id(s);
-    if(s->self_number){
+    *s->vm_id_shared = s->vm_id;
+    if (s->self_number) {
         /* Second vm */
-        s->other_vm_id = read_other_vm_id(s);
+        s->other_vm_id = *s->other_vm_id_shared;
         event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_VM_ID]);
     }
     IVSHMEM_DPRINTF("Started vm with self_number=%d and vm_id=%d\n", s->self_number, s->vm_id);
@@ -556,8 +521,8 @@ static void ivshmem_vector_notify(void *opaque)
     /* TODO: honor interrupt masks */
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
     switch (vector) {
-        case EVENTFD_VM_ID:
-            s->other_vm_id = read_other_vm_id(s);
+        case 0:
+            s->other_vm_id = *s->other_vm_id_shared;
             break;
         case EVENTFD_DBELL:
             IVSHMEM_DPRINTF("Notifying host of a INDBELLSTS update, value: 0x%x\n", *s->db_inbound);
@@ -1163,7 +1128,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     IVShmemState *s = IVSHMEM_NTB_IDT(dev);
     Error *err = NULL;
     uint8_t *pci_conf;
-    uint64_t *bar_addr;
+    struct idt_ivshmem_shm_storage *shm_storage;
 
     /* IRQFD requires MSI */
     if (ivshmem_has_feature(s, IVSHMEM_IOEVENTFD) &&
@@ -1247,19 +1212,22 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
                      PCI_BASE_ADDRESS_MEM_TYPE_64,
                      s->ivshmem_bar2);
 
-    /* Initialize pointers to various outbound registers */
-    bar_addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
+    // Initialize pointers to various outbound registers
+    shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
-    s->db_inbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM1_DB : SHM_VM2_DB];
-    s->db_outbound = (uint32_t *)&bar_addr[s->vm_id == 0 ? SHM_VM2_DB : SHM_VM1_DB];
+    s->vm_id_shared = s->vm_id == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
+    s->other_vm_id_shared = s->vm_id == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
 
-    s->inbound = &bar_addr[s->vm_id == 0 ? SHM_VM1_MSG0 : SHM_VM2_MSG0];
-    s->outbound = &bar_addr[s->vm_id == 0 ? SHM_VM2_MSG0 : SHM_VM1_MSG0];
-    s->msgsts = &bar_addr[s->vm_id == 0 ? SHM_VM1_MSGSTS : SHM_VM2_MSGSTS];
-    s->peer_msgsts = &bar_addr[s->vm_id == 0 ? SHM_VM2_MSGSTS : SHM_VM1_MSGSTS];
+    s->db_inbound = s->vm_id == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
+    s->db_outbound = s->vm_id == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
 
-    s->sw_ntctl = &bar_addr[s->vm_id == 0 ? SHM_VM1_NTCTL : SHM_VM2_NTCTL];
-    s->peer_sw_ntctl = &bar_addr[s->vm_id == 0 ? SHM_VM2_NTCTL : SHM_VM1_NTCTL];
+    s->inbound = s->vm_id == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
+    s->outbound = s->vm_id == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
+    s->msgsts = s->vm_id == 0 ? &shm_storage->vm1.msgsts : &shm_storage->vm2.msgsts;
+    s->peer_msgsts = s->vm_id == 0 ? &shm_storage->vm2.msgsts : &shm_storage->vm1.msgsts;
+
+    s->sw_ntctl = s->vm_id == 0 ? &shm_storage->vm1.ntctl : &shm_storage->vm2.ntctl;
+    s->peer_sw_ntctl = s->vm_id == 0 ? &shm_storage->vm2.ntctl : &shm_storage->vm1.ntctl;
     *s->sw_ntctl = s->vm_id == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
     *s->peer_sw_ntctl = s->vm_id == 0 ? VALUE_NTP2_NTCTL : VALUE_NTP0_NTCTL;
 }
