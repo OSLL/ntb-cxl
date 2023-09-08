@@ -1,59 +1,133 @@
 # NTB/CXL Bridge for InterVM communication
 
 ## Requirements
--- [Docker](https://docs.docker.com/engine/install/)
+- [Docker](https://docs.docker.com/engine/install/)
 
-## Using container
+## Usage
 
-`run_container.sh` a unified starting point for the Docker container. The general syntax is:
+### Using docker
+
+`run_container.sh` is a unified starting point for the Docker container.
+The general syntax is:
 ```
-./run_container.sh <command> <bulid_directory>
+./run_container.sh [OPTIONS]...
 ```
-where `<command>` is currently one of `build`, `enter_qemu_devenv` or `finish_qemu_devenv`.
-If no command is given, `build` is assumed.
+Run `./run_container.sh -h` to see the help.
 
-## Build VM
+*NOTE:* `run_container.sh` has one extra option -- `--host-build-dir=DIR`.
+It represents relative path to the build directory that is mapped to the
+container. This argument is not passed to the container's entrypoint. By
+default the `./build_vm_image` directory is used.
 
-The `build` command will create folder ```build_vm_image``` and build vm image, Linux kernel image and all necessary dependences in this folder.
+### Using locally
+
+First of all, install necessary [dependencies](https://docs.yoctoproject.org/brief-yoctoprojectqs/index.html#build-host-packages)
+for yocto project.
+
+Then use `./scripts/dispatch_docker_command.sh` as entrypoint. This is
+equivalent to using `run_container.sh` script. The rest of the README assumes
+that the **docker case is used**
+
+## Build project
+
+Run `./run_container.sh --command=build` to build the project
 
 ## Run VM
 
-To run VM use command:
-```
-./run_qemu.sh
-```
+To run VM use command: `./run_container.sh --command=run_vm`
 
-User credentials to login vm:
+User credentials to login into the vm:
 - user: ```root```
-- pswd: is not set
+- pswd: not set
 
-## Developing QEMU
+## Run two connected VMs with `idt-ntb-ivshmem`
 
-You can do it both on your host system and with Docker container.
+Run the following command: `./run_container.sh --command=run_vms`
 
-On your host system, after making sure you have already run `prepare_yocto.sh`,
-execute `qemu_enter_devenv.sh`.
+It uses the `scripts/run_vms.sh` script to run `ivshmem-server` and virtual machines
 
-If using Docker, run `./run_container.sh enter_qemu_devenv`.
+QEMU options can be customized via CLI options:
+- `--ivshmem-common-opts`
+- `--cmdline-common`
+- `--common-opts`
+- `--vm1-opts`
+- `--vm2-opts`
 
-In both cases script will print path to checked out QEMU sources repository
-relative to selected build directory.
+The default behavior is to append whatever is specified in that variables
+to default values.
+To override the default value instead, suffix the option with `-override`,
+like `common-opts-override`. Run `--help` for more information
 
-`qemu_enter_devenv.sh` script also copies all files from qemu_src to working repository
-and automatically commits and squashes changes.
+To see default values of that options, refer to the script itself.
 
-After making changes, commit them.
+## QEMU development
 
-When you're done, run `qemu_finish_devenv.sh` (or `./run_container.sh finish_qemu_devenv`).
-This will format patches from commits and copy them into this repository to `yocto_files`.
+QEMU development can be done both on a host system and with Docker
 
-For any changes to take effect, qemu should be rebuilt
-(`./run_container.sh build` or `scripts/prepare_yocto.sh && scripts/build_yocto.sh`).
+Before starting, the project should be built and the command
+`./run_container.sh --command=enter_qemu_devenv` should be executed.
+After successful execution, the path to checkouted QEMU source repository
+relative to selected build directory will be printed out
 
-As with `build`, both `enter_qemu_devenv` and `finish_qemu_devenv` support
-specifying custom build directory,
-and the same does `prepare_yocto.sh` and `qemu_enter_devenv.sh`.
+Command `enter_qemu_devenv` also copies all files from `qemu_src` directory
+to working repository and automatically commits and squashes changes.
+
+Make changes in QEMU and **commit them**. To run bash shell in docker container,
+the `./run_container --command=shell` command can be used.
+
+The `./run_container --command=finish_qemu_devenv` command should be used to
+finish QEMU development. This will format patches from commits and copy them
+into this repository to `yocto_files`. When QEMU development is finished,
+QEMU rebuild is required. This can be done with
+`./run_container.sh --command=build --build=qemu` command
 
 When using host system, you may also try to use various other useful [devtool]
 (https://docs.yoctoproject.org/kernel-dev/common.html#using-devtool-to-patch-the-kernel)
 functions.
+
+## Testing the IDT NTB QEMU device
+
+### `ntb_pingpong`
+
+```ShellSession
+$ ./run_container.sh --command=run_vms
+```
+QEMU should report that something is transferred over out NTB device.
+Also, the counter in debugfs should increase over time:
+```ShellSession
+$ ssh root@localhost -p7001
+# cat /sys/kernel/debug/ntb_pingpong/*/count
+```
+
+### `ntb_tool`
+
+```ShellSession
+$ ./run_container.sh --command=run_vms --cmdline-common="initcall_blacklist=pp_init"
+```
+(needed to load `ntb_tool` instead of `ntb_pingpong`, both are built-in modules currently)
+
+VM1:
+```ShellSession
+$ ssh root@localhost -p7001
+# cd /sys/kernel/debug/ntb_tool/*
+# echo 's 0xdeadbeef' >peer_db
+```
+
+VM2:
+```ShellSession
+$ ssh root@localhost -p7002
+# cd /sys/kernel/debug/ntb_tool/*
+# cat db
+0xdeadbeef
+```
+
+This is the basic usage.
+Also, setting the peer_mask should work.
+See [the kernel documentation](
+https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool)
+for the full usage.
+
+The one thing that is not documented there are the message registers.
+Currently, only passing `msg0` should work.
+It works like `db` and `peer_db`.
+Write to `peer0/msg0`, read from `msg0`.

@@ -1,25 +1,33 @@
 #!/bin/bash
 
-if [ "$1" ]; then
-    CMD="$1"
-else
-    echo -e "\e[1;33mCommand is not provided, assuming 'build'\e[0m"
-    CMD=build
-fi
+RUN_ARGS=()
+BUILD_NO_CACHE=""
 
-if [ "$2" ]; then
-    BUILD_FOLDER_NAME="$2"
-else
-    echo -e "\e[1;33mBuild dir is not provided, using 'build_vm_image' dir\e[0m"
+for ARG in "$@"; do
+    case $ARG in
+        --host-build-dir=*)
+            BUILD_FOLDER_NAME=${ARG#*=}
+            ;;
+        --docker-no-cache*)
+            BUILD_NO_CACHE="--no-cache"
+            ;;
+        *)
+            RUN_ARGS+=("$ARG")
+            ;;
+    esac
+done
+
+if [ -z "$BUILD_FOLDER_NAME" ]; then
+    echo -e "\e[1;33mHost build dir is not provided, using 'build_vm_image' dir\e[0m"
     BUILD_FOLDER_NAME=build_vm_image/
 fi
 
 BUILD_PATH="$PWD"/"$BUILD_FOLDER_NAME"
 
 mkdir -p "$BUILD_FOLDER_NAME"
-docker build . --build-arg build_folder_name="$BUILD_FOLDER_NAME" --build-arg user_id="$(id -u)" -t yocto
-docker run --rm --network host \
-	-v "$BUILD_PATH":/home/user/project/"$BUILD_FOLDER_NAME" \
-	-v "$PWD"/qemu_src:/home/user/project/qemu_src \
-	-v "$PWD"/yocto_files:/home/user/project/yocto_files \
-	yocto "$CMD"
+docker build . --build-arg user_id="$(id -u)" -t yocto $BUILD_NO_CACHE
+docker run -it --rm -p 7001:7001 -p 7002:7002 -p 8001:8001 -p 8002:8002 \
+    -v "$BUILD_PATH":/home/user/project/build_dir \
+    -v "$PWD"/qemu_src:/home/user/project/qemu_src \
+    -v "$PWD"/yocto_files:/home/user/project/yocto_files \
+    yocto "${RUN_ARGS[@]}"

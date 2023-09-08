@@ -8,12 +8,12 @@ RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 ENV LANG en_US.UTF-8   
 ENV LC_ALL en_US.UTF-8
 
-# Set path names for volume and build dirs
-ARG build_folder_name=build_vm_image/
+# ID for new user
 ARG user_id=1000
 
+ENV BUILD_DIRNAME build_dir
 ENV PROJECT_PATH /home/user/project
-ENV BUILD_PATH $PROJECT_PATH/$build_folder_name
+ENV BUILD_PATH $PROJECT_PATH/$BUILD_DIRNAME
 
 # Create user for yocto
 RUN useradd -rm -d /home/user -s /bin/bash -g root -G sudo user -u $user_id
