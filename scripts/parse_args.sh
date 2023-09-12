@@ -76,10 +76,7 @@ for ARGUMENT in "$@"; do
             export BUILD_VAL=$VALUE
             ;;
         --qemu-map-ram-to-shm)
-            shm_size="${VALUE:-256M}"
-            export VM1_OPTIONS="$VM1_OPTIONS \
-                -object memory-backend-file,id=mem,size=$shm_size,mem-path=/dev/shm/qemu,share=on \
-                -machine memory-backend=mem -m $shm_size"
+            export QEMU_SHM_SIZE="${VALUE:-256}"
             ;;
         -h | --help)
             help
