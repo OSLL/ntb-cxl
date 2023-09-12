@@ -176,6 +176,7 @@ enum idt_ivshmem_eventfds {
     EVENTFD_MSG,
 };
 
+#pragma pack(push, 1)
 struct idt_ivshmem_vm_shm_storage {
     uint32_t id;
     uint32_t db;
@@ -186,6 +187,7 @@ struct idt_ivshmem_shm_storage {
     struct idt_ivshmem_vm_shm_storage vm1;
     struct idt_ivshmem_vm_shm_storage vm2;
 };
+#pragma pack(pop)
 
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
 {
