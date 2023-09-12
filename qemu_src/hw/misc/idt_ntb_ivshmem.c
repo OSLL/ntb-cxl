@@ -1097,14 +1097,14 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     // Initialize pointers to various outbound registers
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
-    s->vm_id_shared = s->vm_id == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
-    s->other_vm_id_shared = s->vm_id == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
+    s->vm_id_shared = s->self_number == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
+    s->other_vm_id_shared = s->self_number == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
 
-    s->db_inbound = s->vm_id == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
-    s->db_outbound = s->vm_id == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
+    s->db_inbound = s->self_number == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
+    s->db_outbound = s->self_number == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
 
-    s->inbound = s->vm_id == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
-    s->outbound = s->vm_id == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
+    s->inbound = s->self_number == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
+    s->outbound = s->self_number == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
 }
 
 static void ivshmem_exit(PCIDevice *dev)
