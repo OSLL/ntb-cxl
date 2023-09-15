@@ -105,6 +105,9 @@ In case of a single VM, the shared memory will be at `/dev/shm/qemu`.
 In case of two VMs, the shared memory files will be respectively at
 `/dev/shm/qemu1` and `/dev/shm/qemu2`.
 
+Also, in case of 2 VMs,
+each VM's allocated memory is equal to a half of the total passed memory size.
+
 If using docker, to interact with shared memory you must run a shell inside a container:
 ```ShellSession
 $ docker exec -it <containername> bash
