@@ -85,6 +85,33 @@ When using host system, you may also try to use various other useful [devtool]
 (https://docs.yoctoproject.org/kernel-dev/common.html#using-devtool-to-patch-the-kernel)
 functions.
 
+### QEMU debugging
+
+It might be useful to be able to read/write to a VM memory directly.
+
+It's possible using one the following commands:
+```ShellSessinon
+$ ./run_container.sh --cmd=run_vm --qemu-map-ram-to-shm[=SIZE]
+```
+or
+```ShellSessinon
+$ ./run_container.sh --cmd=run_vms --qemu-map-ram-to-shm[=SIZE]
+```
+
+The `=SIZE` is optional. The default is `256`.
+The value must be provided in mebibytes, without any suffix.
+
+In case of a single VM, the shared memory will be at `/dev/shm/qemu`.
+In case of two VMs, the shared memory files will be respectively at
+`/dev/shm/qemu1` and `/dev/shm/qemu2`.
+
+If using docker, to interact with shared memory you must run a shell inside a container:
+```ShellSession
+$ docker exec -it <containername> bash
+docker$ dd if=/dev/shm/qemu bs=1 count=8
+docker$ ...
+```
+
 ## Testing the IDT NTB QEMU device
 
 ### `ntb_pingpong`
