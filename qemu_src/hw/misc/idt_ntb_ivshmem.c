@@ -211,6 +211,7 @@ enum idt_ivshmem_eventfds {
     EVENTFD_MSG,
 };
 
+#pragma pack(push, 1)
 struct idt_ivshmem_vm_shm_storage {
     uint32_t id;
     uint32_t db;
@@ -223,6 +224,7 @@ struct idt_ivshmem_shm_storage {
     struct idt_ivshmem_vm_shm_storage vm1;
     struct idt_ivshmem_vm_shm_storage vm2;
 };
+#pragma pack(pop)
 
 enum idt_interrupts {
     IDT_NTINTSTS_MSG = 0x1U,
@@ -1215,21 +1217,21 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     // Initialize pointers to various outbound registers
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
-    s->vm_id_shared = s->vm_id == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
-    s->other_vm_id_shared = s->vm_id == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
+    s->vm_id_shared = s->self_number == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
+    s->other_vm_id_shared = s->self_number == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
 
-    s->db_inbound = s->vm_id == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
-    s->db_outbound = s->vm_id == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
+    s->db_inbound = s->self_number == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
+    s->db_outbound = s->self_number == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
 
-    s->inbound = s->vm_id == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
-    s->outbound = s->vm_id == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
-    s->msgsts = s->vm_id == 0 ? &shm_storage->vm1.msgsts : &shm_storage->vm2.msgsts;
-    s->peer_msgsts = s->vm_id == 0 ? &shm_storage->vm2.msgsts : &shm_storage->vm1.msgsts;
+    s->inbound = s->self_number == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
+    s->outbound = s->self_number == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
+    s->msgsts = s->self_number == 0 ? &shm_storage->vm1.msgsts : &shm_storage->vm2.msgsts;
+    s->peer_msgsts = s->self_number == 0 ? &shm_storage->vm2.msgsts : &shm_storage->vm1.msgsts;
 
-    s->sw_ntctl = s->vm_id == 0 ? &shm_storage->vm1.ntctl : &shm_storage->vm2.ntctl;
-    s->peer_sw_ntctl = s->vm_id == 0 ? &shm_storage->vm2.ntctl : &shm_storage->vm1.ntctl;
-    *s->sw_ntctl = s->vm_id == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
-    *s->peer_sw_ntctl = s->vm_id == 0 ? VALUE_NTP2_NTCTL : VALUE_NTP0_NTCTL;
+    s->sw_ntctl = s->self_number == 0 ? &shm_storage->vm1.ntctl : &shm_storage->vm2.ntctl;
+    s->peer_sw_ntctl = s->self_number == 0 ? &shm_storage->vm2.ntctl : &shm_storage->vm1.ntctl;
+    *s->sw_ntctl = s->self_number == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
+    *s->peer_sw_ntctl = s->self_number == 0 ? VALUE_NTP2_NTCTL : VALUE_NTP0_NTCTL;
 }
 
 static void ivshmem_exit(PCIDevice *dev)
