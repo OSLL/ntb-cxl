@@ -132,7 +132,7 @@ struct IVShmemState {
     uint32_t *other_vm_id_shared;
 
     /* BAR states */
-    BARConfig bar_config[6];
+    BARConfig *bar_config;
 };
 
 enum idt_registers {
@@ -256,6 +256,7 @@ struct idt_ivshmem_vm_shm_storage {
     uint64_t ntctl;
     uint64_t msgsts;
     uint64_t msg[4];
+    BARConfig bar_config[6];
 };
 
 struct idt_ivshmem_shm_storage {
@@ -1312,7 +1313,8 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     *s->sw_ntctl = s->self_number == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
     *s->peer_sw_ntctl = s->self_number == 0 ? VALUE_NTP2_NTCTL : VALUE_NTP0_NTCTL;
 
-    /* Initialize some BAR register configurations */
+    /* Initialize BAR register configurations */
+    s->bar_config = s->self_number == 0 ? shm_storage->vm1.bar_config : shm_storage->vm2.bar_config;
     s->bar_config[0].setup = VALUE_NT_BARSETUP0;
 }
 
