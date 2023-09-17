@@ -198,11 +198,11 @@ enum idt_pci_config_registers {
     IDT_NT_BARSETUP0 = 0x470U,
 };
 
-enum idt_pci_config_registers_value {
-    VALUE_NT_BARSETUP0 = (0x0U << 1) | /* TODO: What is it? */ \
-                         (0xCU << 4) | /* TODO: What is it? */ \
-                         (0x1U << 10) | /* TODO: What is it? */ \
-                         (0x1U << 31), /* TODO: What is it? */
+enum idt_default_config_register_values {
+    VALUE_NT_BARSETUP0 = (0x0U << 1) | /* 32-bit addressing */ \
+                         (0xCU << 4) | /* Address Space Size = 4 KiB */ \
+                         (0x1U << 10) | /* This BAR isn't a window (NT Configuration Space) */ \
+                         (0x1U << 31), /* This BAR is enabled */
 };
 
 enum idt_ivshmem_eventfds {
