@@ -68,6 +68,13 @@ typedef struct MSIVector {
     bool unmasked;
 } MSIVector;
 
+typedef struct BARConfig {
+    uint32_t setup;
+    uint32_t limit;
+    uint32_t ltbase;
+    uint32_t utbase;
+} BARConfig;
+
 struct IVShmemState {
     /*< private >*/
     PCIDevice parent_obj;
@@ -123,6 +130,9 @@ struct IVShmemState {
     uint64_t intsts;
     uint32_t *vm_id_shared;
     uint32_t *other_vm_id_shared;
+
+    /* BAR states */
+    BARConfig bar_config[6];
 };
 
 enum idt_registers {
@@ -174,6 +184,31 @@ enum idt_config_registers {
     IDT_NT_NTMTBLDATA  = 0x4D8U,
     GASAADDR           = 0xFF8U,
     GASADATA           = 0xFFCU,
+
+    IDT_NT_BARSETUP0  = 0x470U,
+    IDT_NT_BARLIMIT0  = 0x474U,
+    IDT_NT_BARLTBASE0 = 0x478U,
+    IDT_NT_BARUTBASE0 = 0x47CU,
+    IDT_NT_BARSETUP1  = 0x480U,
+    IDT_NT_BARLIMIT1  = 0x484U,
+    IDT_NT_BARLTBASE1 = 0x488U,
+    IDT_NT_BARUTBASE1 = 0x48CU,
+    IDT_NT_BARSETUP2  = 0x490U,
+    IDT_NT_BARLIMIT2  = 0x494U,
+    IDT_NT_BARLTBASE2 = 0x498U,
+    IDT_NT_BARUTBASE2 = 0x49CU,
+    IDT_NT_BARSETUP3  = 0x4A0U,
+    IDT_NT_BARLIMIT3  = 0x4A4U,
+    IDT_NT_BARLTBASE3 = 0x4A8U,
+    IDT_NT_BARUTBASE3 = 0x4ACU,
+    IDT_NT_BARSETUP4  = 0x4B0U,
+    IDT_NT_BARLIMIT4  = 0x4B4U,
+    IDT_NT_BARLTBASE4 = 0x4B8U,
+    IDT_NT_BARUTBASE4 = 0x4BCU,
+    IDT_NT_BARSETUP5  = 0x4C0U,
+    IDT_NT_BARLIMIT5  = 0x4C4U,
+    IDT_NT_BARLTBASE5 = 0x4C8U,
+    IDT_NT_BARUTBASE5 = 0x4CCU,
 };
 
 enum msgsts_fields {
@@ -187,6 +222,13 @@ enum msgsts_fields {
     IDT_FLD_INMSGSTS3,
 };
 
+enum barsetup_fields {
+    IDT_FLD_BARSETUP_TYPE = 1,
+    IDT_FLD_BARSETUP_SIZE = 4,
+    IDT_FLD_BARSETUP_MODE = 10,
+    IDT_FLD_BARSETUP_ENABLE = 31,
+};
+
 enum idt_config_registers_values {
     VALUE_NT_PCIELCAP_VM1 = (0x0U << 24), /* Local port number is 0x0 */
     VALUE_NT_PCIELCAP_VM2 = (0x2U << 24),
@@ -194,15 +236,11 @@ enum idt_config_registers_values {
     VALUE_NT_PCICMDSTS = (0x1U << 2), /* Bus Master is enabled */
 };
 
-enum idt_pci_config_registers {
-    IDT_NT_BARSETUP0 = 0x470U,
-};
-
 enum idt_default_config_register_values {
-    VALUE_NT_BARSETUP0 = (0x0U << 1) | /* 32-bit addressing */ \
-                         (0xCU << 4) | /* Address Space Size = 4 KiB */ \
-                         (0x1U << 10) | /* This BAR isn't a window (NT Configuration Space) */ \
-                         (0x1U << 31), /* This BAR is enabled */
+    VALUE_NT_BARSETUP0 = (0x0U << IDT_FLD_BARSETUP_TYPE) | /* 32-bit addressing */ \
+                         (0xCU << IDT_FLD_BARSETUP_SIZE) | /* Address Space Size = 4 KiB */ \
+                         (0x1U << IDT_FLD_BARSETUP_MODE) | /* This BAR isn't a window (NT Configuration Space) */ \
+                         (0x1U << IDT_FLD_BARSETUP_ENABLE), /* This BAR is enabled */
 };
 
 enum idt_ivshmem_eventfds {
@@ -421,6 +459,26 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             s->msgsts_mask = val;
             IVSHMEM_DPRINTF("Set the local MSGSTSMSK to value 0x%lx\n", val);
             break;
+
+#define WRITE_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
+            s->bar_config[ind].fld = (uint32_t)val; \
+            IVSHMEM_DPRINTF("Set the local %s%d to value 0x%x\n", #reg, ind, (uint32_t)val); \
+            break;
+#define WRITE_BARREGS(reg, fld) WRITE_BARREG(reg, fld, 0) \
+            WRITE_BARREG(reg, fld, 1) \
+            WRITE_BARREG(reg, fld, 2) \
+            WRITE_BARREG(reg, fld, 3) \
+            WRITE_BARREG(reg, fld, 4) \
+            WRITE_BARREG(reg, fld, 5)
+
+        WRITE_BARREGS(BARSETUP, setup)
+        WRITE_BARREGS(BARLIMIT, limit)
+        WRITE_BARREGS(BARLTBASE, ltbase)
+        WRITE_BARREGS(BARUTBASE, utbase)
+
+#undef WRITE_BARREGS
+#undef WRITE_BARREG
+
         default:
             IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
     }
@@ -488,6 +546,26 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Read the local MSGSTSMSK: 0x%lx\n", s->msgsts_mask);
             ret = s->msgsts_mask;
             break;
+
+#define READ_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
+            ret = s->bar_config[ind].fld; \
+            IVSHMEM_DPRINTF("Read the local %s%d: 0x%lx\n", #reg, ind, ret); \
+            break;
+#define READ_BARREGS(reg, fld) READ_BARREG(reg, fld, 0) \
+            READ_BARREG(reg, fld, 1) \
+            READ_BARREG(reg, fld, 2) \
+            READ_BARREG(reg, fld, 3) \
+            READ_BARREG(reg, fld, 4) \
+            READ_BARREG(reg, fld, 5)
+
+        READ_BARREGS(BARSETUP, setup)
+        READ_BARREGS(BARLIMIT, limit)
+        READ_BARREGS(BARLTBASE, ltbase)
+        READ_BARREGS(BARUTBASE, utbase)
+
+#undef READ_BARREGS
+#undef READ_BARREG
+
         default:
             IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
             ret = 0;
@@ -1111,12 +1189,13 @@ static void ivshmem_write_config(PCIDevice *pdev, uint32_t address,
 static uint32_t ivshmem_read_config(PCIDevice *pdev, uint32_t address,
                                  int len)
 {
+    IVShmemState *s = IVSHMEM_NTB_IDT(pdev);
     uint32_t ret;
     ret = pci_default_read_config(pdev, address, len);
     IVSHMEM_DPRINTF("Default config value at address 0x%x is 0x%x\n", address, ret);
     switch(address){
         case IDT_NT_BARSETUP0:
-            ret = VALUE_NT_BARSETUP0;
+            ret = s->bar_config[0].setup;
             break;
         default:
             ret = pci_default_read_config(pdev, address, len);
@@ -1232,6 +1311,9 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     s->peer_sw_ntctl = s->self_number == 0 ? &shm_storage->vm2.ntctl : &shm_storage->vm1.ntctl;
     *s->sw_ntctl = s->self_number == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
     *s->peer_sw_ntctl = s->self_number == 0 ? VALUE_NTP2_NTCTL : VALUE_NTP0_NTCTL;
+
+    /* Initialize some BAR register configurations */
+    s->bar_config[0].setup = VALUE_NT_BARSETUP0;
 }
 
 static void ivshmem_exit(PCIDevice *dev)
