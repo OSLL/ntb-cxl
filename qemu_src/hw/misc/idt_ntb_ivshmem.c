@@ -126,7 +126,6 @@ struct IVShmemState {
 
     /* State registers */
     uint64_t *sw_ntctl;
-    uint64_t *peer_sw_ntctl;
     uint64_t intsts;
     uint32_t *vm_id_shared;
     uint32_t *other_vm_id_shared;
@@ -328,6 +327,9 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
 static uint64_t get_gasadata(IVShmemState *s)
 {
     uint64_t ret;
+    struct idt_ivshmem_shm_storage *shm_storage =
+        (struct idt_ivshmem_shm_storage *)memory_region_get_ram_ptr(s->ivshmem_bar2);
+
     switch (s->gasaaddr) {
         case IDT_SW_SWPORT0STS:
             ret = VALUE_SWPORT0STS;
@@ -342,13 +344,13 @@ static uint64_t get_gasadata(IVShmemState *s)
             ret = VALUE_NTP0_PCIECMDSTS;
             break;
         case IDT_SW_NTP0_NTCTL:
-            ret = s->vm_id == 0 ? *s->sw_ntctl : *s->peer_sw_ntctl;
+            ret = shm_storage->vm1.ntctl;
             break;
         case IDT_SW_NTP2_PCIECMDSTS:
             ret = VALUE_NTP2_PCIECMDSTS;
             break;
         case IDT_SW_NTP2_NTCTL:
-            ret = s->vm_id == 0 ? *s->peer_sw_ntctl : *s->sw_ntctl;
+            ret = shm_storage->vm2.ntctl;
             break;
         default:
             IVSHMEM_DPRINTF("Not implemented gasadata read on reg 0x%lx\n", s->gasaaddr);
@@ -1309,9 +1311,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     s->peer_msgsts = s->self_number == 0 ? &shm_storage->vm2.msgsts : &shm_storage->vm1.msgsts;
 
     s->sw_ntctl = s->self_number == 0 ? &shm_storage->vm1.ntctl : &shm_storage->vm2.ntctl;
-    s->peer_sw_ntctl = s->self_number == 0 ? &shm_storage->vm2.ntctl : &shm_storage->vm1.ntctl;
     *s->sw_ntctl = s->self_number == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
-    *s->peer_sw_ntctl = s->self_number == 0 ? VALUE_NTP2_NTCTL : VALUE_NTP0_NTCTL;
 
     /* Initialize BAR register configurations */
     s->bar_config = s->self_number == 0 ? shm_storage->vm1.bar_config : shm_storage->vm2.bar_config;
