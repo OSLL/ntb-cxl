@@ -135,13 +135,34 @@ struct IVShmemState {
 };
 
 enum idt_registers {
+    /* Port 0 */
     IDT_SW_NTP0_PCIECMDSTS = 0x1004U,
     IDT_SW_NTP0_NTCTL      = 0x1400U,
+
+    IDT_SW_NTP0_BARSETUP0  = 0x1470U,
+    IDT_SW_NTP0_BARSETUP1  = 0x1480U,
+    IDT_SW_NTP0_BARSETUP2  = 0x1490U,
+    IDT_SW_NTP0_BARSETUP3  = 0x14A0U,
+    IDT_SW_NTP0_BARSETUP4  = 0x14B0U,
+    IDT_SW_NTP0_BARSETUP5  = 0x14C0U,
+
+    IDT_SW_SWPORT0STS      = 0x3E204U,
+
+    /* Port 2 */
     IDT_SW_NTP2_PCIECMDSTS = 0x5004U,
     IDT_SW_NTP2_NTCTL      = 0x5400U,
-    IDT_SW_SWPART0STS      = 0x3E104U,
-    IDT_SW_SWPORT0STS      = 0x3E204U,
+
+    IDT_SW_NTP2_BARSETUP0  = 0x5470U,
+    IDT_SW_NTP2_BARSETUP1  = 0x5480U,
+    IDT_SW_NTP2_BARSETUP2  = 0x5490U,
+    IDT_SW_NTP2_BARSETUP3  = 0x54A0U,
+    IDT_SW_NTP2_BARSETUP4  = 0x54B0U,
+    IDT_SW_NTP2_BARSETUP5  = 0x54C0U,
+
     IDT_SW_SWPORT2STS      = 0x3E244U,
+
+    /* Partition 0 */
+    IDT_SW_SWPART0STS      = 0x3E104U,
     IDT_SW_SWP0MSGCTL0     = 0x3EE00U,
 };
 
@@ -352,6 +373,24 @@ static uint64_t get_gasadata(IVShmemState *s)
         case IDT_SW_NTP2_NTCTL:
             ret = shm_storage->vm2.ntctl;
             break;
+
+#define READ_BARSETUP(vmidx, portidx, baridx) case IDT_SW_NTP ## portidx ## _BARSETUP ## baridx: \
+            ret = shm_storage->vm ## vmidx .bar_config[baridx].setup; \
+            IVSHMEM_DPRINTF("Read the NTP%d_BARSETUP%d from GAS: 0x%lx\n", portidx, baridx, ret); \
+            break;
+#define READ_BARSETUPS(vmidx, portidx) READ_BARSETUP(vmidx, portidx, 0) \
+            READ_BARSETUP(vmidx, portidx, 1) \
+            READ_BARSETUP(vmidx, portidx, 2) \
+            READ_BARSETUP(vmidx, portidx, 3) \
+            READ_BARSETUP(vmidx, portidx, 4) \
+            READ_BARSETUP(vmidx, portidx, 5)
+
+        READ_BARSETUPS(1, 0)
+        READ_BARSETUPS(2, 2)
+
+#undef READ_BARSETUPS
+#undef READ_BARSETUP
+
         default:
             IVSHMEM_DPRINTF("Not implemented gasadata read on reg 0x%lx\n", s->gasaaddr);
             ret = 0;
