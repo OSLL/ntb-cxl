@@ -86,10 +86,17 @@ struct IVShmemState {
     HostMemoryBackend *hostmem; /* with interrupts */
     CharBackend server_chr; /* without interrupts */
 
-    /* BARs */
-    MemoryRegion ivshmem_mmio;  /* BAR 0 (registers) */
+    /* ivshmem-specific BARs */
     MemoryRegion *ivshmem_bar2; /* BAR 2 (shared memory) */
     MemoryRegion server_bar2;   /* used with server_chr */
+
+    /* IDT device BARs */
+    MemoryRegion idt_bar0; /* BAR 0 (registers) */
+    MemoryRegion idt_bar1; /* General purpose */
+    MemoryRegion idt_bar2;
+    MemoryRegion idt_bar3;
+    MemoryRegion idt_bar4;
+    MemoryRegion idt_bar5;
 
     /* interrupt support */
     Peer *peers;
@@ -1263,12 +1270,34 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     pci_conf = dev->config;
     pci_conf[PCI_COMMAND] = PCI_COMMAND_IO | PCI_COMMAND_MEMORY;
 
-    memory_region_init_io(&s->ivshmem_mmio, OBJECT(s), &ivshmem_mmio_ops, s,
-                          "ivshmem-mmio", IVSHMEM_REG_BAR_SIZE);
+    memory_region_init_io(&s->idt_bar0, OBJECT(s), &ivshmem_mmio_ops, s,
+                          "idt-mmio", IVSHMEM_REG_BAR_SIZE);
 
-    /* region for registers*/
+    memory_region_init_io(&s->idt_bar1, OBJECT(s), NULL, s,
+                          "idt-bar1", 1ULL << 28);
+    memory_region_init_io(&s->idt_bar2, OBJECT(s), NULL, s,
+                          "idt-bar2", 1ULL << 28);
+    //memory_region_init_io(&s->idt_bar3, OBJECT(s), NULL, s,
+    //                      "idt-bar3", 1ULL << 28);
+    //memory_region_init_io(&s->idt_bar4, OBJECT(s), NULL, s,
+    //                      "idt-bar4", 1ULL << 31);
+    //memory_region_init_io(&s->idt_bar5, OBJECT(s), NULL, s,
+    //                      "idt-bar5", 1ULL << 31);
+
+    /* NT Configuration Space */
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->ivshmem_mmio);
+                     &s->idt_bar0);
+
+    pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &s->idt_bar1);
+    pci_register_bar(dev, 5, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &s->idt_bar2);
+    //pci_register_bar(dev, 6, PCI_BASE_ADDRESS_SPACE_MEMORY,
+    //                 &s->idt_bar3);
+    //pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
+    //                 &s->idt_bar4);
+    //pci_register_bar(dev, 5, PCI_BASE_ADDRESS_SPACE_MEMORY,
+    //                 &s->idt_bar5);
 
     if (s->hostmem != NULL) {
         IVSHMEM_DPRINTF("using hostmem\n");
