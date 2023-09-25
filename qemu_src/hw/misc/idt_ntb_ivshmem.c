@@ -40,9 +40,6 @@
 #define IVSHMEM_MAX_PEERS UINT16_MAX
 #define IVSHMEM_IOEVENTFD   0
 #define IVSHMEM_MSI     1
-#define IVSHMEM_IDT_OUTREG_INDEX 2
-#define IVSHMEM_NTB_VM_1_INDEX 3
-#define IVSHMEM_NTB_VM_2_INDEX 4
 
 #define IVSHMEM_REG_BAR_SIZE 0x1000
 
@@ -82,9 +79,6 @@ struct IVShmemState {
     HostMemoryBackend *hostmem; /* with interrupts */
     CharBackend server_chr; /* without interrupts */
 
-    /* registers */
-    int vm_id;
-
     /* BARs */
     MemoryRegion ivshmem_mmio;  /* BAR 0 (registers) */
     MemoryRegion *ivshmem_bar2; /* BAR 2 (shared memory) */
@@ -107,17 +101,20 @@ struct IVShmemState {
     uint64_t nt_mtb_addr;
     /* Currently only first value is used */
     uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
-    uint64_t inbound[4];  /* Inbound messages */
-    uint64_t outbound[4];  /* Outbound messages */
+    uint64_t *inbound;  /* Inbound messages */
+    uint64_t *outbound;  /* Outbound messages */
     /* Not implemented */
     /* uint8_t srcbound[4]; */  /* Src partition of messages */
-    uint32_t db_inbound;  /* Inbound doorbell (related to patrition 0?) */
+    uint32_t *db_inbound;  /* Inbound doorbell (related to patrition 0?) */
     uint32_t db_inbound_mask; /* Inbould doorbell mask */
-    uint32_t db_outbound;  /* Outbound doorbell (related to partition 0?) */
+    uint32_t *db_outbound;  /* Outbound doorbell (related to partition 0?) */
 
     /* IDT interconnect */
     uint32_t self_number;
+    int vm_id;
     int other_vm_id;
+    uint32_t *vm_id_shared;
+    uint32_t *other_vm_id_shared;
 };
 
 enum idt_registers {
@@ -179,6 +176,19 @@ enum idt_ivshmem_eventfds {
     EVENTFD_MSG,
 };
 
+#pragma pack(push, 1)
+struct idt_ivshmem_vm_shm_storage {
+    uint32_t id;
+    uint32_t db;
+    uint64_t msg[4];
+};
+
+struct idt_ivshmem_shm_storage {
+    struct idt_ivshmem_vm_shm_storage vm1;
+    struct idt_ivshmem_vm_shm_storage vm2;
+};
+#pragma pack(pop)
+
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
 {
     return (ivs->features & (1 << feature));
@@ -202,40 +212,6 @@ static void interrupt_notify(IVShmemState *s, unsigned int vector)
     msi_notify(&s->parent_obj, vector);
     /* MSI-X */
     /* msix_notify(pdev, vector); */
-}
-
-static void write_data_to_shm(IVShmemState *s, int index, uint64_t val)
-{
-    uint64_t *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    addr[index] = val;
-}
-
-static uint64_t read_data_from_shm(IVShmemState *s, int index)
-{
-    uint64_t *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    return addr[index];
-}
-
-static void shm_write_outbound_register(IVShmemState *s)
-{
-    write_data_to_shm(s, IVSHMEM_IDT_OUTREG_INDEX, s->outbound[0]);
-}
-
-static uint64_t shm_read_outbound_register(IVShmemState *s)
-{
-    return read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
-}
-
-static void shm_write_outbound_db(IVShmemState *s)
-{
-    write_data_to_shm(s, IVSHMEM_IDT_OUTREG_INDEX, s->db_outbound);
-}
-
-static uint64_t shm_read_outbound_db(IVShmemState *s)
-{
-    return read_data_from_shm(s, IVSHMEM_IDT_OUTREG_INDEX);
 }
 
 static uint64_t get_gasadata(IVShmemState *s)
@@ -296,27 +272,12 @@ static uint64_t get_nt_mtb_data(IVShmemState *s)
  *****************************************
  */
 
-
-static void write_vm_id(IVShmemState *s)
-{
-    int *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    addr[s->self_number % 2] = s->vm_id;
-}
-
-static int read_other_vm_id(IVShmemState *s)
-{
-    int *addr;
-    addr = memory_region_get_ram_ptr(s->ivshmem_bar2);
-    return addr[(s->self_number + 1) % 2];
-}
-
 static void init_vm_ids(IVShmemState *s)
 {
-    write_vm_id(s);
-    if(s->self_number){
+    *s->vm_id_shared = s->vm_id;
+    if (s->self_number) {
         /* Second vm */
-        s->other_vm_id = read_other_vm_id(s);
+        s->other_vm_id = *s->other_vm_id_shared;
         event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_VM_ID]);
     }
     IVSHMEM_DPRINTF("Started vm with self_number=%d and vm_id=%d\n", s->self_number, s->vm_id);
@@ -342,7 +303,6 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             break;
         case IDT_NT_OUTMSG0:
             s->outbound[0] = val;
-            shm_write_outbound_register(s);
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register 0\n", val);
 
             if (s->other_vm_id != -1)
@@ -352,9 +312,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             }
             break;
         case IDT_NT_OUTDBELLSET:
-            s->db_outbound = val;
-            s->db_inbound = s->db_outbound;
-            shm_write_outbound_db(s);
+            *s->db_outbound = val;
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound doorbell\n", val);
 
             if (s->other_vm_id != -1)
@@ -364,7 +322,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             }
             break;
         case IDT_NT_INDBELLSTS:
-            s->db_inbound = val;
+            *s->db_inbound = val;
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the inbound doorbell\n", val);
             break;
         case IDT_NT_INDBELLMSK:
@@ -408,11 +366,11 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = s->inbound[0];
             break;
         case IDT_NT_INDBELLSTS:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound doorbell register\n", s->db_inbound);
-            ret = s->db_inbound;
+            IVSHMEM_DPRINTF("Read value 0x%x from the inbound doorbell register\n", *s->db_inbound);
+            ret = *s->db_inbound;
             break;
         case IDT_NT_INDBELLMSK:
-            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%lx\n", s->db_inbound_mask);
+            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->db_inbound_mask);
             ret = s->db_inbound_mask;
             break;
             default:
@@ -450,15 +408,14 @@ static void ivshmem_vector_notify(void *opaque)
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
     switch (vector) {
         case 0:
-            s->other_vm_id = read_other_vm_id(s);
+            s->other_vm_id = *s->other_vm_id_shared;
             break;
         case 1:
-            s->db_inbound = shm_read_outbound_db(s);
-            IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm doorbell to the inbound\n", s->db_inbound);
+            IVSHMEM_DPRINTF("Received value 0x%x to the inbound doorbell\n", *s->db_inbound);
+            // TODO: maybe need to send an interrupt?
             break;
         case 2:
-            s->inbound[0] = shm_read_outbound_register(s);
-            IVSHMEM_DPRINTF("Read value 0x%lx from the outbound shm register\n", s->inbound[0]);
+            IVSHMEM_DPRINTF("Read value 0x%lx to the inbound message register\n", s->inbound[0]);
             interrupt_notify(s, 0);
             break;
         default:
@@ -1055,6 +1012,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     IVShmemState *s = IVSHMEM_NTB_IDT(dev);
     Error *err = NULL;
     uint8_t *pci_conf;
+    struct idt_ivshmem_shm_storage *shm_storage;
 
     /* IRQFD requires MSI */
     if (ivshmem_has_feature(s, IVSHMEM_IOEVENTFD) &&
@@ -1137,6 +1095,18 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
                      PCI_BASE_ADDRESS_MEM_PREFETCH |
                      PCI_BASE_ADDRESS_MEM_TYPE_64,
                      s->ivshmem_bar2);
+
+    // Initialize pointers to various outbound registers
+    shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
+
+    s->vm_id_shared = s->self_number == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
+    s->other_vm_id_shared = s->self_number == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
+
+    s->db_inbound = s->self_number == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
+    s->db_outbound = s->self_number == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
+
+    s->inbound = s->self_number == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
+    s->outbound = s->self_number == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
 }
 
 static void ivshmem_exit(PCIDevice *dev)
