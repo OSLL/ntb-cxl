@@ -11,6 +11,9 @@ for ARG in "$@"; do
         --docker-no-cache*)
             BUILD_NO_CACHE="--no-cache"
             ;;
+        --docker-shm-size*)
+            DOCKER_SHM_SIZE="${ARG#*=}"
+            ;;
         *)
             RUN_ARGS+=("$ARG")
             ;;
@@ -22,11 +25,16 @@ if [ -z "$BUILD_FOLDER_NAME" ]; then
     BUILD_FOLDER_NAME=build_vm_image/
 fi
 
+if ! [ "$DOCKER_SHM_SIZE" ]; then
+    DOCKER_SHM_SIZE="256m";
+fi
+
 BUILD_PATH="$PWD"/"$BUILD_FOLDER_NAME"
 
 mkdir -p "$BUILD_FOLDER_NAME"
 docker build . --build-arg user_id="$(id -u)" -t yocto $BUILD_NO_CACHE
 docker run -it --rm -p 7001:7001 -p 7002:7002 -p 8001:8001 -p 8002:8002 \
+    --shm-size="$DOCKER_SHM_SIZE" \
     -v "$BUILD_PATH":/home/user/project/build_dir \
     -v "$PWD"/qemu_src:/home/user/project/qemu_src \
     -v "$PWD"/yocto_files:/home/user/project/yocto_files \
