@@ -43,6 +43,9 @@
 
 #define IVSHMEM_REG_BAR_SIZE 0x1000
 
+#define IDT_BAR_APERTURE_POWER 28
+#define IDT_BAR_APERTURE_SIZE (1U << IDT_BAR_APERTURE_POWER) /* 256MiB */
+
 #define IVSHMEM_DEBUG 1
 #define IVSHMEM_DPRINTF(fmt, ...)                       \
     do {                                                \
@@ -268,6 +271,10 @@ enum idt_default_config_register_values {
                          (0xCU << IDT_FLD_BARSETUP_SIZE) | /* Address Space Size = 4 KiB */ \
                          (0x1U << IDT_FLD_BARSETUP_MODE) | /* This BAR isn't a window (NT Configuration Space) */ \
                          (0x1U << IDT_FLD_BARSETUP_ENABLE), /* This BAR is enabled */
+
+    VALUE_NT_BARSETUP4 = (IDT_BAR_APERTURE_POWER << IDT_FLD_BARSETUP_SIZE) |
+                         (0x1U << IDT_FLD_BARSETUP_ENABLE),
+    VALUE_NT_BARSETUP5 = VALUE_NT_BARSETUP4,
 };
 
 enum idt_ivshmem_eventfds {
@@ -1274,15 +1281,15 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
                           "idt-mmio", IVSHMEM_REG_BAR_SIZE);
 
     memory_region_init_io(&s->idt_bar4, OBJECT(s), NULL, s,
-                          "idt-bar4", 1ULL << 28);
+                          "idt-bar4", IDT_BAR_APERTURE_SIZE);
     memory_region_init_io(&s->idt_bar5, OBJECT(s), NULL, s,
-                          "idt-bar5", 1ULL << 28);
+                          "idt-bar5", IDT_BAR_APERTURE_SIZE);
     //memory_region_init_io(&s->idt_bar3, OBJECT(s), NULL, s,
-    //                      "idt-bar3", 1ULL << 28);
+    //                      "idt-bar3", IDT_BAR_APERTURE_SIZE);
     //memory_region_init_io(&s->idt_bar4, OBJECT(s), NULL, s,
-    //                      "idt-bar4", 1ULL << 31);
+    //                      "idt-bar4", IDT_BAR_APERTURE_SIZE);
     //memory_region_init_io(&s->idt_bar5, OBJECT(s), NULL, s,
-    //                      "idt-bar5", 1ULL << 31);
+    //                      "idt-bar5", IDT_BAR_APERTURE_SIZE);
 
     /* NT Configuration Space */
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY,
@@ -1384,6 +1391,8 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     /* Initialize BAR register configurations */
     s->bar_config = s->self_number == 0 ? shm_storage->vm1.bar_config : shm_storage->vm2.bar_config;
     s->bar_config[0].setup = VALUE_NT_BARSETUP0;
+    s->bar_config[4].setup = VALUE_NT_BARSETUP4;
+    s->bar_config[5].setup = VALUE_NT_BARSETUP5;
 }
 
 static void ivshmem_exit(PCIDevice *dev)
