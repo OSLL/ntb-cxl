@@ -142,6 +142,9 @@ struct IVShmemState {
 
     /* BAR states */
     BARConfig *bar_config;
+
+    /* Peer physical memory */
+    void *peer_mem;
 };
 
 enum idt_registers {
@@ -638,6 +641,130 @@ static const MemoryRegionOps ivshmem_mmio_ops = {
     .impl = {
         .min_access_size = 4,
         .max_access_size = 4,
+    },
+};
+
+static void *map_peer_shm(uint32_t self_number) {
+        int fd;
+        struct stat statbuf;
+        void *ret;
+
+        IVSHMEM_DPRINTF("Trying to map peer physical memory\n");
+
+        /* Map peer physical memory */
+        /* fd = shm_open(s->self_number == 0 ? "qemu2" : "qemu1", O_RDWR, 0); - requires -lrt */
+        fd = open(self_number == 0 ? "/dev/shm/qemu2" : "/dev/shm/qemu1", O_RDWR);
+        if (fd == -1) {
+            error_report("idt-ntb-ivshmem: can't open shm, MW access failed\n");
+            return NULL;
+        }
+
+        if (fstat(fd, &statbuf) == -1) {
+            perror("mapping shm failed: fstat");
+            return NULL;
+        }
+
+        ret = mmap(NULL, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (ret == MAP_FAILED) {
+            perror("mapping shm failed: mmap");
+            return NULL;
+        }
+
+        return ret;
+}
+
+static uint64_t idt_bar_read(void *opaque, hwaddr addr,
+                             unsigned size, int idx)
+{
+    IVShmemState *s = opaque;
+    BARConfig c = s->bar_config[idx];
+    uint64_t ret;
+
+    if (c.ltbase == 0 && c.utbase == 0) {
+        error_report("idt-ntb-ivshmem: translation address not yet set, reading 0");
+        return 0;
+    }
+
+    if (s->peer_mem == NULL) {
+        if ((s->peer_mem = map_peer_shm(s->self_number)) == NULL) {
+            return 0;
+        }
+    }
+
+    // TODO: honor size
+    // note: utbase isn't needed for 32 bit memory windows
+    ret = *(uint64_t *)(s->peer_mem + c.ltbase + addr);
+
+    IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx\n", idx, ret, addr);
+
+    return ret;
+}
+
+static void idt_bar_write(void *opaque, hwaddr addr,
+                          uint64_t value, unsigned size, int idx)
+{
+    IVShmemState *s = opaque;
+    BARConfig c = s->bar_config[idx];
+
+    if (c.ltbase == 0 && c.utbase == 0) {
+        error_report("idt-ntb-ivshmem: translation address not yet set, refusing to write");
+        return;
+    }
+
+    if (s->peer_mem == NULL) {
+        if ((s->peer_mem = map_peer_shm(s->self_number)) == NULL) {
+            return;
+        }
+    }
+
+    IVSHMEM_DPRINTF("BAR%d region write: value 0x%lx at offset 0x%lx\n", idx, value, addr);
+
+    // TODO: honor size
+    // note: utbase isn't needed for 32 bit memory windows
+    *(uint64_t *)(s->peer_mem + c.ltbase + addr) = value;
+}
+
+static uint64_t idt_bar4_read(void *opaque, hwaddr addr,
+                              unsigned size)
+{
+    return idt_bar_read(opaque, addr, size, 4);
+}
+
+static void idt_bar4_write(void *opaque, hwaddr addr,
+                           uint64_t value, unsigned size)
+{
+    return idt_bar_write(opaque, addr, value, size, 4);
+}
+
+static uint64_t idt_bar5_read(void *opaque, hwaddr addr,
+                              unsigned size)
+{
+    return idt_bar_read(opaque, addr, size, 5);
+}
+
+static void idt_bar5_write(void *opaque, hwaddr addr,
+                           uint64_t value, unsigned size)
+{
+    return idt_bar_write(opaque, addr, value, size, 5);
+}
+
+static const MemoryRegionOps idt_bar4_ops = {
+    .read = idt_bar4_read,
+    .write = idt_bar4_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 8,
+        .max_access_size = 8,
+    },
+};
+
+static const MemoryRegionOps idt_bar5_ops = {
+    .read = idt_bar5_read,
+    .write = idt_bar5_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 8,
+        .max_access_size = 8,
     },
 };
 
@@ -1280,9 +1407,9 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     memory_region_init_io(&s->idt_bar0, OBJECT(s), &ivshmem_mmio_ops, s,
                           "idt-mmio", IVSHMEM_REG_BAR_SIZE);
 
-    memory_region_init_io(&s->idt_bar4, OBJECT(s), NULL, s,
+    memory_region_init_io(&s->idt_bar4, OBJECT(s), &idt_bar4_ops, s,
                           "idt-bar4", IDT_BAR_APERTURE_SIZE);
-    memory_region_init_io(&s->idt_bar5, OBJECT(s), NULL, s,
+    memory_region_init_io(&s->idt_bar5, OBJECT(s), &idt_bar5_ops, s,
                           "idt-bar5", IDT_BAR_APERTURE_SIZE);
     //memory_region_init_io(&s->idt_bar3, OBJECT(s), NULL, s,
     //                      "idt-bar3", IDT_BAR_APERTURE_SIZE);
@@ -1391,6 +1518,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     /* Initialize BAR register configurations */
     s->bar_config = s->self_number == 0 ? shm_storage->vm1.bar_config : shm_storage->vm2.bar_config;
     s->bar_config[0].setup = VALUE_NT_BARSETUP0;
+
     s->bar_config[4].setup = VALUE_NT_BARSETUP4;
     s->bar_config[5].setup = VALUE_NT_BARSETUP5;
 }
