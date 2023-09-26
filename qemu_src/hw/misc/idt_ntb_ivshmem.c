@@ -1273,10 +1273,10 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     memory_region_init_io(&s->idt_bar0, OBJECT(s), &ivshmem_mmio_ops, s,
                           "idt-mmio", IVSHMEM_REG_BAR_SIZE);
 
-    memory_region_init_io(&s->idt_bar1, OBJECT(s), NULL, s,
-                          "idt-bar1", 1ULL << 28);
-    memory_region_init_io(&s->idt_bar2, OBJECT(s), NULL, s,
-                          "idt-bar2", 1ULL << 28);
+    memory_region_init_io(&s->idt_bar4, OBJECT(s), NULL, s,
+                          "idt-bar4", 1ULL << 28);
+    memory_region_init_io(&s->idt_bar5, OBJECT(s), NULL, s,
+                          "idt-bar5", 1ULL << 28);
     //memory_region_init_io(&s->idt_bar3, OBJECT(s), NULL, s,
     //                      "idt-bar3", 1ULL << 28);
     //memory_region_init_io(&s->idt_bar4, OBJECT(s), NULL, s,
@@ -1289,9 +1289,9 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
                      &s->idt_bar0);
 
     pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->idt_bar1);
+                     &s->idt_bar4);
     pci_register_bar(dev, 5, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->idt_bar2);
+                     &s->idt_bar5);
     //pci_register_bar(dev, 6, PCI_BASE_ADDRESS_SPACE_MEMORY,
     //                 &s->idt_bar3);
     //pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
