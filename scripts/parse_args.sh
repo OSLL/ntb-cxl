@@ -75,6 +75,9 @@ for ARGUMENT in "$@"; do
         --build)
             export BUILD_VAL=$VALUE
             ;;
+        --qemu-map-ram-to-shm)
+            export QEMU_SHM_SIZE="${VALUE:-256}"
+            ;;
         -h | --help)
             help
             exit 0

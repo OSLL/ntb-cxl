@@ -73,6 +73,15 @@ else
 	VM2_OPTIONS="$VM2_OPTIONS_DEFAULT $VM2_OPTIONS"
 fi
 
+if [ "$QEMU_SHM_SIZE" ]; then
+	VM1_OPTIONS="$VM1_OPTIONS \
+		-object memory-backend-file,id=mem,size=$((QEMU_SHM_SIZE / 2))M,mem-path=/dev/shm/qemu1,share=on \
+		-machine memory-backend=mem -m $((QEMU_SHM_SIZE / 2))m"
+	VM2_OPTIONS="$VM2_OPTIONS \
+		-object memory-backend-file,id=mem,size=$((QEMU_SHM_SIZE / 2))M,mem-path=/dev/shm/qemu2,share=on \
+		-machine memory-backend=mem -m $((QEMU_SHM_SIZE / 2))m"
+fi
+
 "$ivshmem_server" -m . -l 1M -n 3 -F &
 
 "$qemu" \
