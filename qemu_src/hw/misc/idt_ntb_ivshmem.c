@@ -1521,6 +1521,17 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 
     s->bar_config[4].setup = VALUE_NT_BARSETUP4;
     s->bar_config[5].setup = VALUE_NT_BARSETUP5;
+
+    /* Pre-initialize peer BARSETUPs so that port scan results are always correct */
+    {
+        BARConfig *peer_bar_config =
+            s->self_number == 0 ? shm_storage->vm2.bar_config : shm_storage->vm1.bar_config;
+        if (!peer_bar_config[0].setup) {
+            for (int i = 0; i < 6; i++) {
+                peer_bar_config[i] = s->bar_config[i];
+            }
+        }
+    }
 }
 
 static void ivshmem_exit(PCIDevice *dev)
