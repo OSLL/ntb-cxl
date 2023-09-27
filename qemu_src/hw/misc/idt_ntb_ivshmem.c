@@ -680,8 +680,8 @@ static uint64_t idt_bar_read(void *opaque, hwaddr addr,
     BARConfig c = s->bar_config[idx];
     uint64_t ret;
 
-    if (c.ltbase == 0 && c.utbase == 0) {
-        error_report("idt-ntb-ivshmem: translation address not yet set, reading 0");
+    if (!c.limit) {
+        error_report("idt-ntb-ivshmem: memory window is inactive, reading 0");
         return 0;
     }
 
@@ -706,8 +706,8 @@ static void idt_bar_write(void *opaque, hwaddr addr,
     IVShmemState *s = opaque;
     BARConfig c = s->bar_config[idx];
 
-    if (c.ltbase == 0 && c.utbase == 0) {
-        error_report("idt-ntb-ivshmem: translation address not yet set, refusing to write");
+    if (!c.limit) {
+        error_report("idt-ntb-ivshmem: memory window is inactive, refusing to write");
         return;
     }
 
