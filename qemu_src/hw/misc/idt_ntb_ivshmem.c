@@ -692,8 +692,7 @@ static uint64_t idt_bar_read(void *opaque, hwaddr addr,
     }
 
     // TODO: honor size
-    // note: utbase isn't needed for 32 bit memory windows
-    ret = *(uint64_t *)(s->peer_mem + c.ltbase + addr);
+    ret = *(uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr);
 
     IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx\n", idx, ret, addr);
 
@@ -720,8 +719,7 @@ static void idt_bar_write(void *opaque, hwaddr addr,
     IVSHMEM_DPRINTF("BAR%d region write: value 0x%lx at offset 0x%lx\n", idx, value, addr);
 
     // TODO: honor size
-    // note: utbase isn't needed for 32 bit memory windows
-    *(uint64_t *)(s->peer_mem + c.ltbase + addr) = value;
+    *(uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr) = value;
 }
 
 static uint64_t idt_bar4_read(void *opaque, hwaddr addr,
