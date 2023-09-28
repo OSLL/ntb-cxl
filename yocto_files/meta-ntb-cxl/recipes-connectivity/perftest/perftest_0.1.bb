@@ -5,7 +5,9 @@ LIC_FILES_CHKSUM = "file://COPYING;md5=9310aaac5cbd7408d794745420b94291"
 
 inherit autotools
 
-SRC_URI += "git://github.com/linux-rdma/perftest.git;protocol=https;branch=master"
+SRC_URI += "git://github.com/linux-rdma/perftest.git;protocol=https;branch=master \
+            file://0001-Removed-man-pages.patch \
+            "
 SRCREV = "9411e12bad57fb36754e6f77b9ce92a7af1eb22a"
 
 S = "${WORKDIR}/git"
