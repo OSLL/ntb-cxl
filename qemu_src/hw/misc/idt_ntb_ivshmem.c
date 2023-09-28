@@ -94,12 +94,7 @@ struct IVShmemState {
     MemoryRegion server_bar2;   /* used with server_chr */
 
     /* IDT device BARs */
-    MemoryRegion idt_bar0; /* BAR 0 (registers) */
-    MemoryRegion idt_bar1; /* General purpose */
-    MemoryRegion idt_bar2;
-    MemoryRegion idt_bar3;
-    MemoryRegion idt_bar4;
-    MemoryRegion idt_bar5;
+    MemoryRegion bars[6]; /* BAR 0 maps configuration space, others are general purpose */
 
     /* interrupt support */
     Peer *peers;
@@ -685,6 +680,12 @@ static uint64_t idt_bar_read(void *opaque, hwaddr addr,
         return 0;
     }
 
+    if ((s->bars[idx].addr + addr) > c.limit) {
+        error_report("idt-ntb-ivshmem: BAR read past limit addr, reading 0 "
+                "(bar: 0x%lx, offset: 0x%lx)", s->bars[idx].addr, addr);
+        return 0;
+    }
+
     if (s->peer_mem == NULL) {
         if ((s->peer_mem = map_peer_shm(s->self_number)) == NULL) {
             return 0;
@@ -694,7 +695,8 @@ static uint64_t idt_bar_read(void *opaque, hwaddr addr,
     // TODO: honor size
     ret = *(uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr);
 
-    IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx\n", idx, ret, addr);
+    IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx (bar is at 0x%lx)\n",
+            idx, ret, addr, s->bars[idx].addr);
 
     return ret;
 }
@@ -710,13 +712,20 @@ static void idt_bar_write(void *opaque, hwaddr addr,
         return;
     }
 
+    if ((s->bars[idx].addr + addr) > c.limit) {
+        error_report("idt-ntb-ivshmem: BAR write past limit addr, refusing to write "
+                "(bar: 0x%lx, offset: 0x%lx)", s->bars[idx].addr, addr);
+        return;
+    }
+
     if (s->peer_mem == NULL) {
         if ((s->peer_mem = map_peer_shm(s->self_number)) == NULL) {
             return;
         }
     }
 
-    IVSHMEM_DPRINTF("BAR%d region write: value 0x%lx at offset 0x%lx\n", idx, value, addr);
+    IVSHMEM_DPRINTF("BAR%d region write: value 0x%lx at offset 0x%lx (bar is at 0x%lx)\n",
+            idx, value, addr, s->bars[idx].addr);
 
     // TODO: honor size
     *(uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr) = value;
@@ -1402,12 +1411,12 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     pci_conf = dev->config;
     pci_conf[PCI_COMMAND] = PCI_COMMAND_IO | PCI_COMMAND_MEMORY;
 
-    memory_region_init_io(&s->idt_bar0, OBJECT(s), &ivshmem_mmio_ops, s,
+    memory_region_init_io(&s->bars[0], OBJECT(s), &ivshmem_mmio_ops, s,
                           "idt-mmio", IVSHMEM_REG_BAR_SIZE);
 
-    memory_region_init_io(&s->idt_bar4, OBJECT(s), &idt_bar4_ops, s,
+    memory_region_init_io(&s->bars[4], OBJECT(s), &idt_bar4_ops, s,
                           "idt-bar4", IDT_BAR_APERTURE_SIZE);
-    memory_region_init_io(&s->idt_bar5, OBJECT(s), &idt_bar5_ops, s,
+    memory_region_init_io(&s->bars[5], OBJECT(s), &idt_bar5_ops, s,
                           "idt-bar5", IDT_BAR_APERTURE_SIZE);
     //memory_region_init_io(&s->idt_bar3, OBJECT(s), NULL, s,
     //                      "idt-bar3", IDT_BAR_APERTURE_SIZE);
@@ -1418,12 +1427,12 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 
     /* NT Configuration Space */
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->idt_bar0);
+                     &s->bars[0]);
 
     pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->idt_bar4);
+                     &s->bars[4]);
     pci_register_bar(dev, 5, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->idt_bar5);
+                     &s->bars[5]);
     //pci_register_bar(dev, 6, PCI_BASE_ADDRESS_SPACE_MEMORY,
     //                 &s->idt_bar3);
     //pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
