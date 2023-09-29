@@ -270,9 +270,11 @@ enum idt_default_config_register_values {
                          (0x1U << IDT_FLD_BARSETUP_MODE) | /* This BAR isn't a window (NT Configuration Space) */ \
                          (0x1U << IDT_FLD_BARSETUP_ENABLE), /* This BAR is enabled */
 
-    VALUE_NT_BARSETUP4 = (IDT_BAR_APERTURE_POWER << IDT_FLD_BARSETUP_SIZE) |
+    VALUE_NT_BARSETUP2 = (IDT_BAR_APERTURE_POWER << IDT_FLD_BARSETUP_SIZE) |
                          (0x1U << IDT_FLD_BARSETUP_ENABLE),
-    VALUE_NT_BARSETUP5 = VALUE_NT_BARSETUP4,
+    VALUE_NT_BARSETUP3 = VALUE_NT_BARSETUP2,
+    VALUE_NT_BARSETUP4 = VALUE_NT_BARSETUP2,
+    VALUE_NT_BARSETUP5 = VALUE_NT_BARSETUP2,
 };
 
 enum idt_ivshmem_eventfds {
@@ -731,49 +733,44 @@ static void idt_bar_write(void *opaque, hwaddr addr,
     *(uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr) = value;
 }
 
-static uint64_t idt_bar4_read(void *opaque, hwaddr addr,
-                              unsigned size)
-{
-    return idt_bar_read(opaque, addr, size, 4);
+#define BAR_READ_FN(n) static uint64_t idt_bar ## n ## _read(void *opaque, \
+        hwaddr addr, unsigned size) \
+    { \
+        return idt_bar_read(opaque, addr, size, n); \
+    }
+#define BAR_WRITE_FN(n) static void idt_bar ## n ## _write(void *opaque, \
+        hwaddr addr, uint64_t value, unsigned size) \
+    { \
+        return idt_bar_write(opaque, addr, value, size, n); \
+    }
+#define BAR_FNS(n) BAR_READ_FN(n) \
+    BAR_WRITE_FN(n)
+
+BAR_FNS(2)
+BAR_FNS(3)
+BAR_FNS(4)
+BAR_FNS(5)
+
+#undef BAR_FNS
+#undef BAR_WRITE_FN
+#undef BAR_READ_FN
+
+#define BAR_OPS(n) static const MemoryRegionOps idt_bar ## n ## _ops = { \
+    .read = idt_bar ## n ## _read, \
+    .write = idt_bar ## n ## _write, \
+    .endianness = DEVICE_LITTLE_ENDIAN, \
+    .impl = { \
+        .min_access_size = 8, \
+        .max_access_size = 8, \
+    }, \
 }
 
-static void idt_bar4_write(void *opaque, hwaddr addr,
-                           uint64_t value, unsigned size)
-{
-    return idt_bar_write(opaque, addr, value, size, 4);
-}
+BAR_OPS(2);
+BAR_OPS(3);
+BAR_OPS(4);
+BAR_OPS(5);
 
-static uint64_t idt_bar5_read(void *opaque, hwaddr addr,
-                              unsigned size)
-{
-    return idt_bar_read(opaque, addr, size, 5);
-}
-
-static void idt_bar5_write(void *opaque, hwaddr addr,
-                           uint64_t value, unsigned size)
-{
-    return idt_bar_write(opaque, addr, value, size, 5);
-}
-
-static const MemoryRegionOps idt_bar4_ops = {
-    .read = idt_bar4_read,
-    .write = idt_bar4_write,
-    .endianness = DEVICE_LITTLE_ENDIAN,
-    .impl = {
-        .min_access_size = 8,
-        .max_access_size = 8,
-    },
-};
-
-static const MemoryRegionOps idt_bar5_ops = {
-    .read = idt_bar5_read,
-    .write = idt_bar5_write,
-    .endianness = DEVICE_LITTLE_ENDIAN,
-    .impl = {
-        .min_access_size = 8,
-        .max_access_size = 8,
-    },
-};
+#undef BAR_OPS
 
 static void ivshmem_vector_notify(void *opaque)
 {
@@ -1414,31 +1411,27 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     memory_region_init_io(&s->bars[0], OBJECT(s), &ivshmem_mmio_ops, s,
                           "idt-mmio", IVSHMEM_REG_BAR_SIZE);
 
+    memory_region_init_io(&s->bars[2], OBJECT(s), &idt_bar2_ops, s,
+                          "idt-bar2", IDT_BAR_APERTURE_SIZE);
+    memory_region_init_io(&s->bars[3], OBJECT(s), &idt_bar3_ops, s,
+                          "idt-bar3", IDT_BAR_APERTURE_SIZE);
     memory_region_init_io(&s->bars[4], OBJECT(s), &idt_bar4_ops, s,
                           "idt-bar4", IDT_BAR_APERTURE_SIZE);
-    memory_region_init_io(&s->bars[5], OBJECT(s), &idt_bar5_ops, s,
-                          "idt-bar5", IDT_BAR_APERTURE_SIZE);
-    //memory_region_init_io(&s->idt_bar3, OBJECT(s), NULL, s,
-    //                      "idt-bar3", IDT_BAR_APERTURE_SIZE);
-    //memory_region_init_io(&s->idt_bar4, OBJECT(s), NULL, s,
-    //                      "idt-bar4", IDT_BAR_APERTURE_SIZE);
-    //memory_region_init_io(&s->idt_bar5, OBJECT(s), NULL, s,
+    //memory_region_init_io(&s->bars[5], OBJECT(s), &idt_bar5_ops, s,
     //                      "idt-bar5", IDT_BAR_APERTURE_SIZE);
 
     /* NT Configuration Space */
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY,
                      &s->bars[0]);
 
+    pci_register_bar(dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &s->bars[2]);
+    pci_register_bar(dev, 3, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &s->bars[3]);
     pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
                      &s->bars[4]);
-    pci_register_bar(dev, 5, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->bars[5]);
-    //pci_register_bar(dev, 6, PCI_BASE_ADDRESS_SPACE_MEMORY,
-    //                 &s->idt_bar3);
-    //pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
-    //                 &s->idt_bar4);
     //pci_register_bar(dev, 5, PCI_BASE_ADDRESS_SPACE_MEMORY,
-    //                 &s->idt_bar5);
+    //                 &s->bars[5]);
 
     if (s->hostmem != NULL) {
         IVSHMEM_DPRINTF("using hostmem\n");
@@ -1499,11 +1492,11 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     }
 
     vmstate_register_ram(s->ivshmem_bar2, DEVICE(s));
-    pci_register_bar(PCI_DEVICE(s), 2,
-                     PCI_BASE_ADDRESS_SPACE_MEMORY |
-                     PCI_BASE_ADDRESS_MEM_PREFETCH |
-                     PCI_BASE_ADDRESS_MEM_TYPE_64,
-                     s->ivshmem_bar2);
+    //pci_register_bar(PCI_DEVICE(s), 2,
+    //                 PCI_BASE_ADDRESS_SPACE_MEMORY |
+    //                 PCI_BASE_ADDRESS_MEM_PREFETCH |
+    //                 PCI_BASE_ADDRESS_MEM_TYPE_64,
+    //                 s->ivshmem_bar2);
 
     // Initialize pointers to various outbound registers
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
@@ -1526,8 +1519,10 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     s->bar_config = s->self_number == 0 ? shm_storage->vm1.bar_config : shm_storage->vm2.bar_config;
     s->bar_config[0].setup = VALUE_NT_BARSETUP0;
 
+    s->bar_config[2].setup = VALUE_NT_BARSETUP2;
+    s->bar_config[3].setup = VALUE_NT_BARSETUP3;
     s->bar_config[4].setup = VALUE_NT_BARSETUP4;
-    s->bar_config[5].setup = VALUE_NT_BARSETUP5;
+    //s->bar_config[5].setup = VALUE_NT_BARSETUP5;
 
     /* Pre-initialize peer BARSETUPs so that port scan results are always correct */
     {
