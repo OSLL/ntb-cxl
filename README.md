@@ -136,6 +136,8 @@ $ ./run_container.sh --command=run_vms --cmdline-common="initcall_blacklist=pp_i
 ```
 (needed to load `ntb_tool` instead of `ntb_pingpong`, both are built-in modules currently)
 
+#### Doorbell register
+
 VM1:
 ```ShellSession
 $ ssh root@localhost -p7001
@@ -151,18 +153,49 @@ $ ssh root@localhost -p7002
 0xdeadbeef
 ```
 
-This is the basic usage.
 Also, setting the peer_mask should work.
+
+#### Message registers
+
+VM1:
+```ShellSession
+# echo 0xdeadbeef >peer0/msg0
+```
+
+VM2:
+```ShellSession
+# cat msg0
+0xdeadbeef<-0
+```
+
+All message registers (`msg[0-3]`) should work.
+
+Subsequent writes should not be performed if the MSGSTS of the target peer
+was not cleared (OUTMSGx is set and an interrupt is sent to host which
+attempts to write):
+
+```
+IVSHMEM: Refusing to write to msg register, INMSGSTS0 is non-zero (vm1 0x10000)
+```
+
+INMSGSTSx fields of MSGSTS are set on a write to INMSGx
+and should be unset by the client software on the peer (e.g. `ntb_pingpong`).
+With `ntb_tool` it can be achieved with the following:
+```ShellSession
+# cat msg_sts
+0x10000
+# echo 'c 0xffffffff' >msg_sts
+# cat msg_sts
+0x0
+```
+
+#### Additional sources
+
 See [the kernel documentation](
 https://docs.kernel.org/driver-api/ntb.html#ntb-tool-test-client-ntb-tool)
 for the full usage.
 Even more functionality is described in [the source code](
 https://elixir.bootlin.com/linux/v6.1.50/source/drivers/ntb/test/ntb_tool.c#L54).
-
-The one thing that is not documented there are the message registers.
-Currently, only passing `msg0` should work.
-It works like `db` and `peer_db`.
-Write to `peer0/msg0`, read from `msg0`.
 
 ### `ntb_hw_idt` debugfs node
 
@@ -170,3 +203,7 @@ The driver has its own debugfs node with some useful info:
 ```ShellSession
 # cat /sys/kernel/debug/ntb_hw_idt/info\:0000\:00\:03.0
 ```
+
+It can be used to verify that VMs have correct ports.
+
+Also it's useful for viewing `msg_mask`, which is write-only in `ntb_tool`.
