@@ -90,15 +90,15 @@ typedef struct idt_shared_registers {
     uint64_t msg[4]; /* Inbound messages (outbound from the peer's view) */
 
     uint64_t intsts; /* Which interrupt we just received? */
+
+    /* Currently only first value is used */
+    uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
 } idt_shared_registers;
 #pragma pack(pop)
 
 typedef struct idt_local_registers {
     uint64_t gasaaddr;
     uint64_t nt_mtb_addr;
-
-    /* Currently only first value is used */
-    uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
 
     /* Not implemented */
     /* uint8_t srcbound[4]; */  /* Src partition of messages */
@@ -430,7 +430,7 @@ static void write_gasadata(IVShmemState *s, uint64_t val)
 {
     switch (s->lregs.gasaaddr){
         case IDT_SW_SWP0MSGCTL0:
-            s->lregs.part0_msg_control[0] = val;
+            s->regs->part0_msg_control[0] = val;
             break;
         default:
             IVSHMEM_DPRINTF("Not implemented gasadata write on reg 0x%lx\n", s->lregs.gasaaddr);
