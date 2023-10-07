@@ -78,6 +78,15 @@ typedef struct BARConfig {
     uint32_t utbase;
 } BARConfig;
 
+#pragma pack(push, 1)
+typedef struct idt_shared_registers {
+    uint32_t db;
+    uint64_t ntctl;
+    uint64_t msgsts;
+    uint64_t msg[4];
+} idt_shared_registers;
+#pragma pack(pop)
+
 struct IVShmemState {
     /*< private >*/
     PCIDevice parent_obj;
@@ -142,7 +151,7 @@ struct IVShmemState {
     void *peer_mem;
 };
 
-enum idt_registers {
+enum idt_register_addresses {
     /* Port 0 */
     IDT_SW_NTP0_PCIECMDSTS = 0x1004U,
     IDT_SW_NTP0_NTCTL      = 0x1400U,
@@ -174,7 +183,7 @@ enum idt_registers {
     IDT_SW_SWP0MSGCTL0     = 0x3EE00U,
 };
 
-enum idt_registers_values {
+enum idt_register_values {
     VALUE_SWPORT0STS = (0x1U << 4) | /* Link up, data link layer is 'DL_up' */ \
                        (0x3U << 6) | /* Partition is 0x0 */ \
                        (0x0U << 10),  /* NT Function is enabled */
@@ -286,10 +295,7 @@ enum idt_ivshmem_eventfds {
 #pragma pack(push, 1)
 struct idt_ivshmem_vm_shm_storage {
     uint32_t id;
-    uint32_t db;
-    uint64_t ntctl;
-    uint64_t msgsts;
-    uint64_t msg[4];
+    idt_shared_registers regs;
     BARConfig bar_config[6];
 };
 
@@ -379,13 +385,13 @@ static uint64_t get_gasadata(IVShmemState *s)
             ret = VALUE_NTP0_PCIECMDSTS;
             break;
         case IDT_SW_NTP0_NTCTL:
-            ret = shm_storage->vm1.ntctl;
+            ret = shm_storage->vm1.regs.ntctl;
             break;
         case IDT_SW_NTP2_PCIECMDSTS:
             ret = VALUE_NTP2_PCIECMDSTS;
             break;
         case IDT_SW_NTP2_NTCTL:
-            ret = shm_storage->vm2.ntctl;
+            ret = shm_storage->vm2.regs.ntctl;
             break;
 
 #define READ_BARSETUP(vmidx, portidx, baridx) case IDT_SW_NTP ## portidx ## _BARSETUP ## baridx: \
@@ -1501,22 +1507,42 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     // Initialize pointers to various outbound registers
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
-    s->vm_id_shared = s->self_number == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
-    s->other_vm_id_shared = s->self_number == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
+    if (s->self_number == 0) {
+        s->vm_id_shared = &shm_storage->vm1.id;
+        s->other_vm_id_shared = &shm_storage->vm2.id;
 
-    s->db_inbound = s->self_number == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
-    s->db_outbound = s->self_number == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
+        s->db_inbound = &shm_storage->vm1.regs.db;
+        s->db_outbound = &shm_storage->vm2.regs.db;
 
-    s->inbound = s->self_number == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
-    s->outbound = s->self_number == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
-    s->msgsts = s->self_number == 0 ? &shm_storage->vm1.msgsts : &shm_storage->vm2.msgsts;
-    s->peer_msgsts = s->self_number == 0 ? &shm_storage->vm2.msgsts : &shm_storage->vm1.msgsts;
+        s->inbound = shm_storage->vm1.regs.msg;
+        s->outbound = shm_storage->vm2.regs.msg;
+        s->msgsts = &shm_storage->vm1.regs.msgsts;
+        s->peer_msgsts = &shm_storage->vm2.regs.msgsts;
 
-    s->sw_ntctl = s->self_number == 0 ? &shm_storage->vm1.ntctl : &shm_storage->vm2.ntctl;
-    *s->sw_ntctl = s->self_number == 0 ? VALUE_NTP0_NTCTL : VALUE_NTP2_NTCTL;
+        s->sw_ntctl = &shm_storage->vm1.regs.ntctl;
+        *s->sw_ntctl = VALUE_NTP0_NTCTL;
 
-    /* Initialize BAR register configurations */
-    s->bar_config = s->self_number == 0 ? shm_storage->vm1.bar_config : shm_storage->vm2.bar_config;
+        /* Initialize BAR register configurations */
+        s->bar_config = shm_storage->vm1.bar_config;
+    } else {
+        s->vm_id_shared = &shm_storage->vm2.id;
+        s->other_vm_id_shared = &shm_storage->vm1.id;
+
+        s->db_inbound = &shm_storage->vm2.regs.db;
+        s->db_outbound = &shm_storage->vm1.regs.db;
+
+        s->inbound = shm_storage->vm2.regs.msg;
+        s->outbound = shm_storage->vm1.regs.msg;
+        s->msgsts = &shm_storage->vm2.regs.msgsts;
+        s->peer_msgsts = &shm_storage->vm1.regs.msgsts;
+
+        s->sw_ntctl = &shm_storage->vm2.regs.ntctl;
+        *s->sw_ntctl = VALUE_NTP2_NTCTL;
+
+        /* Initialize BAR register configurations */
+        s->bar_config = shm_storage->vm2.bar_config;
+    }
+
     s->bar_config[0].setup = VALUE_NT_BARSETUP0;
 
     s->bar_config[2].setup = VALUE_NT_BARSETUP2;
