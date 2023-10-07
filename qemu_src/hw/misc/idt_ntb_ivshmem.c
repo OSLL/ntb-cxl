@@ -81,19 +81,21 @@ typedef struct BARConfig {
 #pragma pack(push, 1)
 typedef struct idt_shared_registers {
     uint32_t db; /* Inbound doorbell (outbound from the peer's view) (related to patrition 0?) */
+    uint32_t db_mask; /* Inbound doorbell interrupt mask */
+
     uint64_t ntctl;
+
     uint64_t msgsts; /* Inbound/outbound messages status */
+    uint64_t msgsts_mask; /* Message status interrupt mask */
     uint64_t msg[4]; /* Inbound messages (outbound from the peer's view) */
+
+    uint64_t intsts; /* Which interrupt we just received? */
 } idt_shared_registers;
 #pragma pack(pop)
 
 typedef struct idt_local_registers {
     uint64_t gasaaddr;
     uint64_t nt_mtb_addr;
-    uint64_t msgsts_mask;
-    uint32_t db_inbound_mask; /* Inbould doorbell mask */
-
-    uint64_t intsts;
 
     /* Currently only first value is used */
     uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
@@ -355,7 +357,7 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
         IVSHMEM_DPRINTF("Refusing to write to msg register, INMSGSTS%d is non-zero (vm%d 0x%lx)\n",
                 index, s->vm_id + 1, s->peer_regs->msgsts);
         s->regs->msgsts |= (0x1U << (IDT_FLD_OUTMSGSTS0 + index)); /* Set the error status */
-        s->lregs.intsts = IDT_NTINTSTS_MSG;
+        s->regs->intsts = IDT_NTINTSTS_MSG;
         interrupt_notify(s, 0);
         return;
     }
@@ -515,7 +517,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Cleared the inbound doorbell, new value: 0x%x\n", s->regs->db);
             break;
         case IDT_NT_INDBELLMSK:
-            s->lregs.db_inbound_mask = val;
+            s->regs->db_mask = val;
             IVSHMEM_DPRINTF("Set the inbound doorbell mask to value 0x%lx\n", val);
             break;
         case IDT_NT_MSGSTS:
@@ -524,7 +526,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
                     s->regs->msgsts, s->vm_id + 1);
             break;
         case IDT_NT_MSGSTSMSK:
-            s->lregs.msgsts_mask = val;
+            s->regs->msgsts_mask = val;
             IVSHMEM_DPRINTF("Set the local MSGSTSMSK to value 0x%lx\n", val);
             break;
 
@@ -580,7 +582,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = get_nt_mtb_data(s);
             break;
         case IDT_NT_NTINTSTS:  /* used when handling interrupts */
-            ret = s->lregs.intsts;
+            ret = s->regs->intsts;
             break;
         case IDT_NT_INMSG0:
             IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", s->regs->msg[0], 0);
@@ -603,16 +605,16 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = s->regs->db;
             break;
         case IDT_NT_INDBELLMSK:
-            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->lregs.db_inbound_mask);
-            ret = s->lregs.db_inbound_mask;
+            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->regs->db_mask);
+            ret = s->regs->db_mask;
             break;
         case IDT_NT_MSGSTS:
             IVSHMEM_DPRINTF("Read the local MSGSTS: 0x%lx\n", s->regs->msgsts);
             ret = s->regs->msgsts;
             break;
         case IDT_NT_MSGSTSMSK:
-            IVSHMEM_DPRINTF("Read the local MSGSTSMSK: 0x%lx\n", s->lregs.msgsts_mask);
-            ret = s->lregs.msgsts_mask;
+            IVSHMEM_DPRINTF("Read the local MSGSTSMSK: 0x%lx\n", s->regs->msgsts_mask);
+            ret = s->regs->msgsts_mask;
             break;
 
 #define READ_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
@@ -805,12 +807,12 @@ static void ivshmem_vector_notify(void *opaque)
             break;
         case EVENTFD_DBELL:
             IVSHMEM_DPRINTF("Notifying host of a INDBELLSTS update, value: 0x%x\n", s->regs->db);
-            s->lregs.intsts = IDT_NTINTSTS_DBELL;
+            s->regs->intsts = IDT_NTINTSTS_DBELL;
             interrupt_notify(s, 0);
             break;
         case EVENTFD_MSG:
             IVSHMEM_DPRINTF("Notifying host of a MSGSTS update, value: 0x%lx\n", s->regs->msg[0]);
-            s->lregs.intsts = IDT_NTINTSTS_MSG;
+            s->regs->intsts = IDT_NTINTSTS_MSG;
             interrupt_notify(s, 0);
             break;
         default:
