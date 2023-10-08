@@ -30,6 +30,7 @@
 #include "chardev/char-fe.h"
 #include "sysemu/hostmem.h"
 #include "qapi/visitor.h"
+#include "qemu/atomic.h"
 
 #include "hw/misc/ivshmem.h"
 #include "qom/object.h"
@@ -695,7 +696,7 @@ static uint64_t idt_bar_read(void *opaque, hwaddr addr,
     }
 
     // TODO: honor size
-    ret = *(uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr);
+    ret = qatomic_load_acquire((uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr));
 
     IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx (bar is at 0x%lx)\n",
             idx, ret, addr, s->bars[idx].addr);
@@ -730,7 +731,7 @@ static void idt_bar_write(void *opaque, hwaddr addr,
             idx, value, addr, s->bars[idx].addr);
 
     // TODO: honor size
-    *(uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr) = value;
+    qatomic_store_release((uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr), value);
 }
 
 #define BAR_READ_FN(n) static uint64_t idt_bar ## n ## _read(void *opaque, \
