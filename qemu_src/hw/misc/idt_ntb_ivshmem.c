@@ -79,6 +79,11 @@ typedef struct BARConfig {
 } BARConfig;
 
 #pragma pack(push, 1)
+typedef struct idt_global_registers {
+    uint32_t segsigsts;
+    uint32_t segsigmsk;
+} idt_global_registers;
+
 typedef struct idt_shared_registers {
     uint32_t db; /* Inbound doorbell (outbound from the peer's view) (related to patrition 0?) */
     uint32_t db_mask; /* Inbound doorbell interrupt mask */
@@ -151,6 +156,9 @@ struct IVShmemState {
 
     /* Peer's shared registers */
     idt_shared_registers *peer_regs;
+
+    /* Global switch registers */
+    idt_global_registers *gregs;
 
     /* BAR states */
     BARConfig *bar_config;
@@ -312,6 +320,7 @@ struct idt_ivshmem_vm_shm_storage {
 };
 
 struct idt_ivshmem_shm_storage {
+    struct idt_global_registers gregs;
     struct idt_ivshmem_vm_shm_storage vm1;
     struct idt_ivshmem_vm_shm_storage vm2;
 };
@@ -438,6 +447,11 @@ static void write_gasadata(IVShmemState *s, uint64_t val)
         case IDT_SW_SWP0MSGCTL0:
             s->regs->part0_msg_control[0] = val;
             break;
+        case IDT_SW_SEGSIGSTS:
+            s->gregs->segsigsts &= ~val; /* Substraction with a module of 2 */
+            IVSHMEM_DPRINTF("Cleared the SEGSIGSTS, new value: 0x%x (vm%d)\n",
+                    s->gregs->segsigsts, s->vm_id);
+            break;
         default:
             IVSHMEM_DPRINTF("Not implemented gasadata write on reg 0x%lx\n", s->lregs.gasaaddr);
     }
@@ -538,8 +552,13 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Set the local MSGSTSMSK to value 0x%lx\n", val);
             break;
         case IDT_NT_NTGSIGNAL:
-            assert(val == 1ULL);
-            IVSHMEM_DPRINTF("NTGSIGNAL: stub write\n");
+            assert(val == 1ULL); /* Constrained by device spec */
+            s->gregs->segsigsts |= (1UL << 0); /* Assume partition 0 */
+            /* TODO: honor SEGSIGMSK */
+            s->peer_regs->intsts |= IDT_NTINTSTS_SEVENT;
+            event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+            IVSHMEM_DPRINTF("Write to NTGSIGNAL: set flag in SEGSIGSTS and sent an interrupt (vm%d -> vm%d)\n",
+                    s->vm_id, s->other_vm_id);
             break;
 
 #define WRITE_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
@@ -1518,8 +1537,10 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     //                 PCI_BASE_ADDRESS_MEM_TYPE_64,
     //                 s->ivshmem_bar2);
 
-    // Initialize pointers to various outbound registers
+    // Initialize pointers to various registers
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
+
+    s->gregs = &shm_storage->gregs;
 
     if (s->self_number == 0) {
         s->vm_id_shared = &shm_storage->vm1.id;
