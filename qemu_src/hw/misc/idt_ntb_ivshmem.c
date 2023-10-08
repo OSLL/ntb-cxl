@@ -159,7 +159,7 @@ struct IVShmemState {
     void *peer_mem;
 };
 
-enum idt_register_addresses {
+enum idt_global_config_registers {
     /* Port 0 */
     IDT_SW_NTP0_PCIECMDSTS = 0x1004U,
     IDT_SW_NTP0_NTCTL      = 0x1400U,
@@ -189,6 +189,10 @@ enum idt_register_addresses {
     /* Partition 0 */
     IDT_SW_SWPART0STS      = 0x3E104U,
     IDT_SW_SWP0MSGCTL0     = 0x3EE00U,
+
+    /* Switch event registers */
+    IDT_SW_SEGSIGSTS       = 0x3EC30U,
+    IDT_SW_SEGSIGMSK       = 0x3EC34U,
 };
 
 enum idt_register_values {
@@ -212,6 +216,7 @@ enum idt_config_registers {
     IDT_NT_PCIELCTLSTS = 0x50U,
     IDT_NT_NTCTL       = 0x400U,
     IDT_NT_NTINTSTS    = 0x404U,
+    IDT_NT_NTGSIGNAL   = 0x410U,
     IDT_NT_OUTDBELLSET = 0x420U,
     IDT_NT_INDBELLSTS  = 0x428U,
     IDT_NT_INDBELLMSK  = 0x42CU,
@@ -528,6 +533,10 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
         case IDT_NT_MSGSTSMSK:
             s->regs->msgsts_mask = val;
             IVSHMEM_DPRINTF("Set the local MSGSTSMSK to value 0x%lx\n", val);
+            break;
+        case IDT_NT_NTGSIGNAL:
+            assert(val == 1ULL);
+            IVSHMEM_DPRINTF("NTGSIGNAL: stub write\n");
             break;
 
 #define WRITE_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
