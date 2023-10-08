@@ -301,8 +301,7 @@ enum idt_default_config_register_values {
 
 enum idt_ivshmem_eventfds {
     EVENTFD_VM_ID = 0,
-    EVENTFD_DBELL,
-    EVENTFD_MSG,
+    EVENTFD_INTERRUPT_HOST,
 };
 
 #pragma pack(push, 1)
@@ -373,8 +372,10 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
     if (s->other_vm_id != -1)
     {
         s->peer_regs->msgsts |= (0x1U << (IDT_FLD_INMSGSTS0 + index));
-        event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_MSG]);
-        IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
+        s->peer_regs->intsts |= IDT_NTINTSTS_MSG;
+        event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+        IVSHMEM_DPRINTF("Sent message register update notification (vm%d -> vm%d)\n",
+                s->vm_id, s->other_vm_id);
     }
 }
 
@@ -513,8 +514,10 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 
             if (s->other_vm_id != -1)
             {
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_DBELL]);
-                IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
+                s->peer_regs->intsts |= IDT_NTINTSTS_DBELL;
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+                IVSHMEM_DPRINTF("Sent doorbell register update notification (vm%d -> vm%d)\n",
+                        s->vm_id, s->other_vm_id);
             }
             break;
         case IDT_NT_INDBELLSTS:
@@ -811,17 +814,11 @@ static void ivshmem_vector_notify(void *opaque)
     /* TODO: honor interrupt masks */
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
     switch (vector) {
-        case 0:
+        case EVENTFD_VM_ID:
             s->other_vm_id = *s->other_vm_id_shared;
             break;
-        case EVENTFD_DBELL:
-            IVSHMEM_DPRINTF("Notifying host of a INDBELLSTS update, value: 0x%x\n", s->regs->db);
-            s->regs->intsts = IDT_NTINTSTS_DBELL;
-            interrupt_notify(s, 0);
-            break;
-        case EVENTFD_MSG:
-            IVSHMEM_DPRINTF("Notifying host of a MSGSTS update, value: 0x%lx\n", s->regs->msg[0]);
-            s->regs->intsts = IDT_NTINTSTS_MSG;
+        case EVENTFD_INTERRUPT_HOST:
+            IVSHMEM_DPRINTF("Passing interrupt to the host (vm%d)\n", s->vm_id);
             interrupt_notify(s, 0);
             break;
         default:
