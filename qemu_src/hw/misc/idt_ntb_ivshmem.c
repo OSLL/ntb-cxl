@@ -201,6 +201,9 @@ enum idt_global_config_registers {
     IDT_SW_SWP0MSGCTL0     = 0x3EE00U,
 
     /* Switch event registers */
+    IDT_SW_SESTS           = 0x3EC00U,
+    IDT_SW_SELINKUPSTS     = 0x3EC0CU,
+    IDT_SW_SELINKDNSTS     = 0x3EC14U,
     IDT_SW_SEGSIGSTS       = 0x3EC30U,
     IDT_SW_SEGSIGMSK       = 0x3EC34U,
 };
@@ -425,6 +428,10 @@ static uint64_t get_gasadata(IVShmemState *s)
             ret = shm_storage->vm2.regs.ntctl;
             IVSHMEM_DPRINTF("GAS: Read switch port 2 NTCTL: 0x%lx\n", ret);
             break;
+        case IDT_SW_SESTS:
+            ret = 0ULL;
+            IVSHMEM_DPRINTF("GAS: Stub read of SESTS (not used by Linux driver)\n");
+            break;
 
 #define READ_BARSETUP(vmidx, portidx, baridx) case IDT_SW_NTP ## portidx ## _BARSETUP ## baridx: \
             ret = shm_storage->vm ## vmidx .bar_config[baridx].setup; \
@@ -461,6 +468,14 @@ static void write_gasadata(IVShmemState *s, uint64_t val)
             s->gregs->segsigsts &= ~val; /* Substraction with a module of 2 */
             IVSHMEM_DPRINTF("GAS: Cleared the SEGSIGSTS, new value: 0x%x (vm%d)\n",
                     s->gregs->segsigsts, s->vm_id);
+            break;
+        case IDT_SW_SELINKDNSTS:
+            // TODO: switch event?
+            IVSHMEM_DPRINTF("GAS: Stub SELINKDNSTS write (not used in Linux driver)\n");
+            break;
+        case IDT_SW_SELINKUPSTS:
+            // TODO: switch event?
+            IVSHMEM_DPRINTF("GAS: Stub SELINKUPSTS write (not used in Linux driver)\n");
             break;
         default:
             IVSHMEM_DPRINTF("GAS: Not implemented gasadata write on reg 0x%lx\n", s->lregs.gasaaddr);
