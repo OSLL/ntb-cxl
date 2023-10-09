@@ -82,6 +82,8 @@ typedef struct BARConfig {
 typedef struct idt_global_registers {
     uint32_t segsigsts;
     uint32_t segsigmsk;
+
+    uint32_t ntmtbl0; /* NT Mapping Table */
 } idt_global_registers;
 
 typedef struct idt_shared_registers {
@@ -469,16 +471,27 @@ static uint64_t get_nt_mtb_data(IVShmemState *s)
 {
     uint64_t ret;
     switch (s->lregs.nt_mtb_addr){
-        case 0x0U:  // Partion 0
-            ret = 0;
-            ret |= 0x1;  // Set VALID field
-            IVSHMEM_DPRINTF("Reading partition 0 MTB data: 0x%lx\n", ret);
+        case 0x0U: /* Partion 0 */
+            ret = s->gregs->ntmtbl0;
+            IVSHMEM_DPRINTF("MTB: Read partition 0 MTB data: 0x%lx\n", ret);
             break;
         default:
-            IVSHMEM_DPRINTF("Not implemented nt_mtb_addr on value 0x%lx\n", s->lregs.nt_mtb_addr);
+            IVSHMEM_DPRINTF("MTB: Not implemented read on addr 0x%lx\n", s->lregs.nt_mtb_addr);
             ret = 0;
     }
     return ret;
+}
+
+static void set_nt_mtb_data(IVShmemState *s, uint32_t val)
+{
+    switch (s->lregs.nt_mtb_addr){
+        case 0x0U: /* Partion 0 */
+            s->gregs->ntmtbl0 = val;
+            IVSHMEM_DPRINTF("MTB: Set partition 0 MTB data: 0x%x\n", val);
+            break;
+        default:
+            IVSHMEM_DPRINTF("MTB: Not implemented write on addr 0x%lx\n", s->lregs.nt_mtb_addr);
+    }
 }
 
 /*
@@ -521,6 +534,10 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
         case IDT_NT_NTMTBLADDR:
             s->lregs.nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
             IVSHMEM_DPRINTF("Set NTMTBLADDR: 0x%lx\n", s->lregs.nt_mtb_addr);
+            break;
+        case IDT_NT_NTMTBLDATA:
+            set_nt_mtb_data(s, val);
+            IVSHMEM_DPRINTF("Handled NTMTBLDATA write: 0x%lx\n", val);
             break;
         case IDT_NT_OUTMSG0:
             IVSHMEM_DPRINTF("Handling write to OUTMSG0: 0x%lx\n", val);
