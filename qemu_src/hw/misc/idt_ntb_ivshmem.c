@@ -539,6 +539,10 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             set_nt_mtb_data(s, val);
             IVSHMEM_DPRINTF("Handled NTMTBLDATA write: 0x%lx\n", val);
             break;
+        case IDT_NT_NTINTSTS: /* interrupt status */
+            s->regs->intsts &= ~val;
+            IVSHMEM_DPRINTF("Cleared the local NTINTSTS: 0x%lx\n", s->regs->intsts);
+            break;
         case IDT_NT_OUTMSG0:
             IVSHMEM_DPRINTF("Handling write to OUTMSG0: 0x%lx\n", val);
             write_outbound_msg(s, 0, val);
@@ -651,7 +655,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = get_nt_mtb_data(s);
             IVSHMEM_DPRINTF("Handled NTMTBLDATA read: 0x%lx\n", ret);
             break;
-        case IDT_NT_NTINTSTS:  /* used when handling interrupts */
+        case IDT_NT_NTINTSTS: /* interrupt status */
             ret = s->regs->intsts;
             IVSHMEM_DPRINTF("Read local NTINTSTS: 0x%lx\n", ret);
             break;
