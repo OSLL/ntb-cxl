@@ -22,9 +22,9 @@ if [[ $BUILD_VAL == "all" || $BUILD_VAL == "image" ]]; then
 fi
 
 if [[ $BUILD_VAL == "all" || $BUILD_VAL == "qemu" ]]; then
-    bitbake -c cleansstate qemu-system-native
     bitbake -c install qemu-system-native
     bitbake qemu-helper-native
+    # cp $(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name qemu-system-x86_64 | sed -n 2p) $(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name qemu-system-x86_64 | sed -n 1p) # Hotfix for ubuntu 22.04 ldd error
 fi
 
 set +x
