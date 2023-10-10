@@ -41,7 +41,7 @@
 #define IVSHMEM_IOEVENTFD   0
 #define IVSHMEM_MSI     1
 
-#define IVSHMEM_REG_BAR_SIZE 0x1000
+#define IVSHMEM_REG_BAR_SIZE 0x2000
 
 #define IDT_BAR_APERTURE_POWER 28
 #define IDT_BAR_APERTURE_SIZE (1U << IDT_BAR_APERTURE_POWER) /* 256MiB */
@@ -59,6 +59,30 @@ typedef struct IVShmemState IVShmemState;
 #define TYPE_IVSHMEM_NTB_IDT "idt-ntb-ivshmem"
 DECLARE_INSTANCE_CHECKER(IVShmemState, IVSHMEM_NTB_IDT,
                          TYPE_IVSHMEM_NTB_IDT)
+
+
+#define SWITCH_CASE_READ_BARSETUP(vmidx, portidx, baridx) case IDT_SW_NTP ## portidx ## _BARSETUP ## baridx: \
+            ret = shm_storage->vm ## vmidx .bar_config[baridx].setup; \
+            IVSHMEM_DPRINTF("GAS: Read the NTP%d_BARSETUP%d from GAS: 0x%lx\n", portidx, baridx, ret); \
+            break;
+#define SWITCH_CASE_READ_BARSETUPS(vmidx, portidx) SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 0) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 1) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 2) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 3) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 4) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 5)
+
+#define SWITCH_CASE_WRITE_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
+            s->bar_config[ind].fld = (uint32_t)val; \
+            IVSHMEM_DPRINTF("Set the local %s%d to value 0x%x\n", #reg, ind, (uint32_t)val); \
+            break;
+#define SWITCH_CASE_WRITE_BARREGS(reg, fld) SWITCH_CASE_WRITE_BARREG(reg, fld, 0) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 1) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 2) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 3) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 4) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 5)
+
 
 typedef struct Peer {
     int nb_eventfds;
@@ -106,6 +130,8 @@ typedef struct idt_shared_registers {
 typedef struct idt_local_registers {
     uint64_t gasaaddr;
     uint64_t nt_mtb_addr;
+    uint32_t inbound_mw_part;
+    uint32_t inbound_mw_bar;
 
     /* Not implemented */
     /* uint8_t srcbound[4]; */  /* Src partition of messages */
@@ -164,6 +190,9 @@ struct IVShmemState {
 
     /* BAR states */
     BARConfig *bar_config;
+
+    /* Peer's BAR states. For OUT-OF-SPECIFICATION */
+    BARConfig *peer_bar_config;
 
     /* Peer physical memory */
     void *peer_mem;
@@ -272,6 +301,13 @@ enum idt_config_registers {
     IDT_NT_BARLIMIT5  = 0x4C4U,
     IDT_NT_BARLTBASE5 = 0x4C8U,
     IDT_NT_BARUTBASE5 = 0x4CCU,
+    /* Out of specification */
+    IDT_OOF_TPART     = 0x1000U,
+    IDT_OOF_LUTOFF    = 0x1004U,
+    IDT_OOF_LDATA     = 0x1008U,
+    IDT_OOF_HDATA     = 0x100CU,
+    IDT_OOF_LLIMIT    = 0x1010U,
+    IDT_OOF_HLIMIT    = 0x1014U,
 };
 
 enum msgsts_fields {
@@ -433,22 +469,8 @@ static uint64_t get_gasadata(IVShmemState *s)
             IVSHMEM_DPRINTF("GAS: Stub read of SESTS (not used by Linux driver)\n");
             break;
 
-#define READ_BARSETUP(vmidx, portidx, baridx) case IDT_SW_NTP ## portidx ## _BARSETUP ## baridx: \
-            ret = shm_storage->vm ## vmidx .bar_config[baridx].setup; \
-            IVSHMEM_DPRINTF("GAS: Read the NTP%d_BARSETUP%d from GAS: 0x%lx\n", portidx, baridx, ret); \
-            break;
-#define READ_BARSETUPS(vmidx, portidx) READ_BARSETUP(vmidx, portidx, 0) \
-            READ_BARSETUP(vmidx, portidx, 1) \
-            READ_BARSETUP(vmidx, portidx, 2) \
-            READ_BARSETUP(vmidx, portidx, 3) \
-            READ_BARSETUP(vmidx, portidx, 4) \
-            READ_BARSETUP(vmidx, portidx, 5)
-
-        READ_BARSETUPS(1, 0)
-        READ_BARSETUPS(2, 2)
-
-#undef READ_BARSETUPS
-#undef READ_BARSETUP
+        SWITCH_CASE_READ_BARSETUPS(1, 0)
+        SWITCH_CASE_READ_BARSETUPS(2, 2)
 
         default:
             IVSHMEM_DPRINTF("GAS: Not implemented gasadata read on reg 0x%lx\n", s->lregs.gasaaddr);
@@ -613,24 +635,37 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
                     s->vm_id, s->other_vm_id);
             break;
 
-#define WRITE_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
-            s->bar_config[ind].fld = (uint32_t)val; \
-            IVSHMEM_DPRINTF("Set the local %s%d to value 0x%x\n", #reg, ind, (uint32_t)val); \
+        SWITCH_CASE_WRITE_BARREGS(BARSETUP, setup)
+        SWITCH_CASE_WRITE_BARREGS(BARLIMIT, limit)
+        SWITCH_CASE_WRITE_BARREGS(BARLTBASE, ltbase)
+        SWITCH_CASE_WRITE_BARREGS(BARUTBASE, utbase)
+
+        case IDT_OOF_TPART:
+            s->lregs.inbound_mw_part = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the partion for the inbound_mw: 0x%lx\n", val);
             break;
-#define WRITE_BARREGS(reg, fld) WRITE_BARREG(reg, fld, 0) \
-            WRITE_BARREG(reg, fld, 1) \
-            WRITE_BARREG(reg, fld, 2) \
-            WRITE_BARREG(reg, fld, 3) \
-            WRITE_BARREG(reg, fld, 4) \
-            WRITE_BARREG(reg, fld, 5)
 
-        WRITE_BARREGS(BARSETUP, setup)
-        WRITE_BARREGS(BARLIMIT, limit)
-        WRITE_BARREGS(BARLTBASE, ltbase)
-        WRITE_BARREGS(BARUTBASE, utbase)
+        case IDT_OOF_LUTOFF:
+            s->lregs.inbound_mw_bar = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the BAR for the inbound_mw: 0x%lx\n", val);
+            break;
+        
+        case IDT_OOF_LDATA:
+            s->peer_bar_config[s->lregs.inbound_mw_bar].ltbase = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the ltbase in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            break;
 
-#undef WRITE_BARREGS
-#undef WRITE_BARREG
+        case IDT_OOF_HDATA:
+            s->peer_bar_config[s->lregs.inbound_mw_bar].utbase = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the utbase in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            break;
+
+        case IDT_OOF_LLIMIT:
+        case IDT_OOF_HLIMIT:
+            s->peer_bar_config[s->lregs.inbound_mw_bar].limit = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the limit in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            IVSHMEM_DPRINTF("[Host %d] Addr of peer_bar_config: 0x%lx. Addr of local bar_config: 0x%lx\n", s->self_number, (void*)s->peer_bar_config, (void*)s->bar_config);
+            break;
 
         default:
             IVSHMEM_DPRINTF("Invalid write at addr " HWADDR_FMT_plx  " for config space\n", addr);
@@ -814,6 +849,7 @@ static void idt_bar_write(void *opaque, hwaddr addr,
 
     if (!c.limit) {
         error_report("idt-ntb-ivshmem: memory window is inactive, refusing to write");
+        IVSHMEM_DPRINTF("[Host %d] Refused write on BAR%d (ltbase: 0x%lx, utbase: 0x%lx, limit: 0x%lx, setup: 0x%lx) Addr: 0x%lx\n", s->self_number, idx, c.ltbase, c.utbase, c.limit, c.setup, (void*)s->bar_config);
         return;
     }
 
@@ -1611,6 +1647,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 
         /* Initialize BAR register configurations */
         s->bar_config = shm_storage->vm1.bar_config;
+        s->peer_bar_config = shm_storage->vm2.bar_config;
     } else {
         s->vm_id_shared = &shm_storage->vm2.id;
         s->other_vm_id_shared = &shm_storage->vm1.id;
@@ -1622,6 +1659,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 
         /* Initialize BAR register configurations */
         s->bar_config = shm_storage->vm2.bar_config;
+        s->peer_bar_config = shm_storage->vm1.bar_config;
     }
 
     s->bar_config[0].setup = VALUE_NT_BARSETUP0;
