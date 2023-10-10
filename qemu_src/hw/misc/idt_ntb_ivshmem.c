@@ -113,7 +113,7 @@ typedef struct idt_global_registers {
 typedef struct idt_shared_registers {
     uint32_t db; /* Inbound doorbell (outbound from the peer's view) (related to patrition 0?) */
     uint32_t db_mask; /* Inbound doorbell interrupt mask */
-
+    uint32_t inbound_mw_part; 
     uint64_t ntctl;
 
     uint64_t msgsts; /* Inbound/outbound messages status */
@@ -124,17 +124,14 @@ typedef struct idt_shared_registers {
 
     /* Currently only first value is used */
     uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
+    uint64_t inb_msg_src[4];  /* Source partition for inbound registers */
 } idt_shared_registers;
 #pragma pack(pop)
 
 typedef struct idt_local_registers {
     uint64_t gasaaddr;
     uint64_t nt_mtb_addr;
-    uint32_t inbound_mw_part;
     uint32_t inbound_mw_bar;
-
-    /* Not implemented */
-    /* uint8_t srcbound[4]; */  /* Src partition of messages */
 } idt_local_registers;
 
 struct IVShmemState {
@@ -227,14 +224,17 @@ enum idt_global_config_registers {
 
     /* Partition 0 */
     IDT_SW_SWPART0STS      = 0x3E104U,
-    IDT_SW_SWP0MSGCTL0     = 0x3EE00U,
-
+    IDT_SW_SWP0MSGCTL0	   = 0x3EE00U,
+    IDT_SW_SWP0MSGCTL1	   = 0x3EE20U,
+    IDT_SW_SWP0MSGCTL2	   = 0x3EE40U,
+    IDT_SW_SWP0MSGCTL3	   = 0x3EE60U,
     /* Switch event registers */
     IDT_SW_SESTS           = 0x3EC00U,
     IDT_SW_SELINKUPSTS     = 0x3EC0CU,
     IDT_SW_SELINKDNSTS     = 0x3EC14U,
     IDT_SW_SEGSIGSTS       = 0x3EC30U,
-    IDT_SW_SEGSIGMSK       = 0x3EC34U,
+    IDT_SW_SEGSIGMSK       = 0x3EC34U
+
 };
 
 enum idt_register_values {
@@ -276,6 +276,12 @@ enum idt_config_registers {
     IDT_NT_NTMTBLDATA  = 0x4D8U,
     GASAADDR           = 0xFF8U,
     GASADATA           = 0xFFCU,
+    
+    /* Inbound Message Source */
+    IDT_NT_INMSGSRC0   = 0x00450U,
+    IDT_NT_INMSGSRC1   = 0x00454U,
+    IDT_NT_INMSGSRC2   = 0x00458U,
+    IDT_NT_INMSGSRC3   = 0x0045CU,
 
     IDT_NT_BARSETUP0  = 0x470U,
     IDT_NT_BARLIMIT0  = 0x474U,
@@ -423,6 +429,7 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
     {
         s->peer_regs->msgsts |= (0x1U << (IDT_FLD_INMSGSTS0 + index));
         s->peer_regs->intsts |= IDT_NTINTSTS_MSG;
+        s->peer_regs->inb_msg_src[index] = s->regs->inbound_mw_part;
         event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
         IVSHMEM_DPRINTF("Sent message register update notification (vm%d -> vm%d)\n",
                 s->vm_id, s->other_vm_id);
@@ -485,6 +492,18 @@ static void write_gasadata(IVShmemState *s, uint64_t val)
         case IDT_SW_SWP0MSGCTL0:
             s->regs->part0_msg_control[0] = val;
             IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL0: 0x%lx\n", val);
+            break;
+        case IDT_SW_SWP0MSGCTL1:
+            s->regs->part0_msg_control[1] = val;
+            IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL1: 0x%lx\n", val);
+            break;
+        case IDT_SW_SWP0MSGCTL2:
+            s->regs->part0_msg_control[2] = val;
+            IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL2: 0x%lx\n", val);
+            break;
+        case IDT_SW_SWP0MSGCTL3:
+            s->regs->part0_msg_control[3] = val;
+            IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL3: 0x%lx\n", val);
             break;
         case IDT_SW_SEGSIGSTS:
             s->gregs->segsigsts &= ~val; /* Substraction with a module of 2 */
@@ -641,7 +660,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
         SWITCH_CASE_WRITE_BARREGS(BARUTBASE, utbase)
 
         case IDT_OOF_TPART:
-            s->lregs.inbound_mw_part = (uint32_t)val;
+            s->regs->inbound_mw_part = (uint32_t)val;
             IVSHMEM_DPRINTF("Set the partion for the inbound_mw: 0x%lx\n", val);
             break;
 
@@ -714,16 +733,32 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 0);
             break;
         case IDT_NT_INMSG1:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 1);
             ret = s->regs->msg[1];
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 1);
             break;
         case IDT_NT_INMSG2:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 2);
             ret = s->regs->msg[2];
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 2);
             break;
         case IDT_NT_INMSG3:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 3);
             ret = s->regs->msg[3];
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 3);
+            break;
+        case IDT_NT_INMSGSRC0:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 0);
+            ret = s->regs->inb_msg_src[0];
+            break;
+        case IDT_NT_INMSGSRC1:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 1);
+            ret = s->regs->inb_msg_src[1];
+            break;
+        case IDT_NT_INMSGSRC2:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 2);
+            ret = s->regs->inb_msg_src[2];
+            break;
+        case IDT_NT_INMSGSRC3:
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 3);
+            ret = s->regs->inb_msg_src[3];
             break;
         case IDT_NT_INDBELLSTS:
             ret = s->regs->db;
