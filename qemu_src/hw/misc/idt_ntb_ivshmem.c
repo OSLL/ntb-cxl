@@ -745,20 +745,20 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 3);
             break;
         case IDT_NT_INMSGSRC0:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 0);
             ret = s->regs->inb_msg_src[0];
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 0);
             break;
         case IDT_NT_INMSGSRC1:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 1);
             ret = s->regs->inb_msg_src[1];
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 1);
             break;
         case IDT_NT_INMSGSRC2:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 2);
             ret = s->regs->inb_msg_src[2];
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 2);
             break;
         case IDT_NT_INMSGSRC3:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 3);
             ret = s->regs->inb_msg_src[3];
+            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 3);
             break;
         case IDT_NT_INDBELLSTS:
             ret = s->regs->db;
