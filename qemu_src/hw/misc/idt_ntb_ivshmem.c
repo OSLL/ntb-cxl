@@ -698,7 +698,8 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             break;
         case IDT_NT_NTINTMSK:
             s->gregs->nt_int_mask = (uint32_t)val;
-            IVSHMEM_DPRINTF("Write set global interrupt mask to: %d\n", val);
+            IVSHMEM_DPRINTF("Set global interrupt mask to: %d\n", val);
+            break;
         default:
             IVSHMEM_DPRINTF("Invalid write at addr " HWADDR_FMT_plx  " for config space\n", addr);
     }
@@ -789,7 +790,10 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             ret = s->regs->msgsts_mask;
             IVSHMEM_DPRINTF("Read the local MSGSTSMSK: 0x%lx\n", ret);
             break;
-
+        case IDT_NT_NTINTMSK:
+            ret = s->gregs->nt_int_mask;
+            IVSHMEM_DPRINTF("Read global interrupt mask: %d\n", ret);
+            break;
 #define READ_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
             ret = s->bar_config[ind].fld; \
             IVSHMEM_DPRINTF("Read the local %s%d: 0x%lx\n", #reg, ind, ret); \
@@ -1683,7 +1687,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
     s->gregs = &shm_storage->gregs;
-    s->gregs.nt_int_mask = ( 0x1U |         // Message Interrupt
+    s->gregs->nt_int_mask = ( 0x1U |         // Message Interrupt
                             (0x1U << 1) |   // Doorbell Interrupt
                             (0x1U << 3) |   // Switch Event
                             (0x1U << 4) |   // Failover Mode Change Initiated (Not used)
