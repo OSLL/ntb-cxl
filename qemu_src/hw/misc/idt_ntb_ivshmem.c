@@ -421,7 +421,7 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
         s->regs->msgsts |= (0x1U << (IDT_FLD_OUTMSGSTS0 + index)); /* Set the error status */
 
         if ((s->regs->msgsts_mask & ~(0x1U << (IDT_FLD_OUTMSGSTS0 + index))) &&
-                (s->gregs->nt_int_mask & ~IDT_NTINTSTS_MSG))
+                (~s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
         {
             s->regs->intsts = IDT_NTINTSTS_MSG;
             interrupt_notify(s, 0);
@@ -438,8 +438,8 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
         s->peer_regs->msgsts |= (0x1U << (IDT_FLD_INMSGSTS0 + index));
         s->peer_regs->inb_msg_src[index] = s->regs->inbound_mw_part;
 
-        if ((s->peer_regs->msgsts_mask & ~(0x1U << (IDT_FLD_INMSGSTS0 + index))) &&
-                (s->gregs->nt_int_mask & ~IDT_NTINTSTS_MSG))
+        if ((~s->peer_regs->msgsts_mask & (0x1U << (IDT_FLD_INMSGSTS0 + index))) &&
+                (~s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
         {
             s->peer_regs->intsts |= IDT_NTINTSTS_MSG;
             event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
@@ -634,7 +634,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 
             if (s->other_vm_id != -1)
             {
-                if (s->gregs->nt_int_mask & ~IDT_NTINTSTS_DBELL) {
+                if (~s->gregs->nt_int_mask & IDT_NTINTSTS_DBELL) {
                     s->peer_regs->intsts |= IDT_NTINTSTS_DBELL;
                     event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
                     IVSHMEM_DPRINTF("Sent doorbell register update notification (vm%d -> vm%d)\n",
@@ -663,7 +663,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             assert(val == 1ULL); /* Constrained by device spec */
             s->gregs->segsigsts |= (1UL << 0); /* Assume partition 0 */
             /* TODO: honor SEGSIGMSK */
-            if (s->gregs->nt_int_mask & ~IDT_NTINTSTS_SEVENT) {
+            if (~s->gregs->nt_int_mask & IDT_NTINTSTS_SEVENT) {
                 s->peer_regs->intsts |= IDT_NTINTSTS_SEVENT;
                 event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
                 IVSHMEM_DPRINTF("Write to NTGSIGNAL: set flag in SEGSIGSTS and sent an interrupt (vm%d -> vm%d)\n",
