@@ -43,7 +43,7 @@
 
 #define IVSHMEM_REG_BAR_SIZE 0x2000
 
-#define IDT_BAR_APERTURE_POWER 28
+#define IDT_BAR_APERTURE_POWER 20
 #define IDT_BAR_APERTURE_SIZE (1U << IDT_BAR_APERTURE_POWER) /* 256MiB */
 
 #define IVSHMEM_DEBUG 1
@@ -106,7 +106,7 @@ typedef struct BARConfig {
 typedef struct idt_global_registers {
     uint32_t segsigsts;
     uint32_t segsigmsk;
-
+    uint32_t nt_int_mask;
     uint32_t ntmtbl0; /* NT Mapping Table */
 } idt_global_registers;
 
@@ -233,8 +233,10 @@ enum idt_global_config_registers {
     IDT_SW_SELINKUPSTS     = 0x3EC0CU,
     IDT_SW_SELINKDNSTS     = 0x3EC14U,
     IDT_SW_SEGSIGSTS       = 0x3EC30U,
-    IDT_SW_SEGSIGMSK       = 0x3EC34U
+    IDT_SW_SEGSIGMSK       = 0x3EC34U,
 
+    /* Global interrupt mask */
+    IDT_NT_NTINTMSK        = 0x00408U
 };
 
 enum idt_register_values {
@@ -418,7 +420,9 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
                 index, s->vm_id + 1, s->peer_regs->msgsts);
         s->regs->msgsts |= (0x1U << (IDT_FLD_OUTMSGSTS0 + index)); /* Set the error status */
         s->regs->intsts = IDT_NTINTSTS_MSG;
-        interrupt_notify(s, 0);
+        if ((s->regs->msgsts_mask & (0x1U << (IDT_FLD_OUTMSGSTS0 + index))) &&
+            (s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
+            interrupt_notify(s, 0);
         return;
     }
 
@@ -430,9 +434,12 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
         s->peer_regs->msgsts |= (0x1U << (IDT_FLD_INMSGSTS0 + index));
         s->peer_regs->intsts |= IDT_NTINTSTS_MSG;
         s->peer_regs->inb_msg_src[index] = s->regs->inbound_mw_part;
-        event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
-        IVSHMEM_DPRINTF("Sent message register update notification (vm%d -> vm%d)\n",
-                s->vm_id, s->other_vm_id);
+        if ((s->peer_regs->msgsts_mask & (0x1U << (IDT_FLD_INMSGSTS0 + index))) && 
+            (s->gregs->nt_int_mask & IDT_NTINTSTS_MSG)){
+            event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+            IVSHMEM_DPRINTF("Sent message register update notification (vm%d -> vm%d)\n",
+                    s->vm_id, s->other_vm_id);
+        }
     }
 }
 
@@ -622,9 +629,11 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             if (s->other_vm_id != -1)
             {
                 s->peer_regs->intsts |= IDT_NTINTSTS_DBELL;
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
-                IVSHMEM_DPRINTF("Sent doorbell register update notification (vm%d -> vm%d)\n",
-                        s->vm_id, s->other_vm_id);
+                if (s->gregs->nt_int_mask & IDT_NTINTSTS_DBELL) {
+                    event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+                    IVSHMEM_DPRINTF("Sent doorbell register update notification (vm%d -> vm%d)\n",
+                            s->vm_id, s->other_vm_id);
+                }
             }
             break;
         case IDT_NT_INDBELLSTS:
@@ -649,9 +658,11 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             s->gregs->segsigsts |= (1UL << 0); /* Assume partition 0 */
             /* TODO: honor SEGSIGMSK */
             s->peer_regs->intsts |= IDT_NTINTSTS_SEVENT;
-            event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
-            IVSHMEM_DPRINTF("Write to NTGSIGNAL: set flag in SEGSIGSTS and sent an interrupt (vm%d -> vm%d)\n",
-                    s->vm_id, s->other_vm_id);
+            if (s->gregs->nt_int_mask & IDT_NTINTSTS_SEVENT) {
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+                IVSHMEM_DPRINTF("Write to NTGSIGNAL: set flag in SEGSIGSTS and sent an interrupt (vm%d -> vm%d)\n",
+                        s->vm_id, s->other_vm_id);
+            }
             break;
 
         SWITCH_CASE_WRITE_BARREGS(BARSETUP, setup)
@@ -685,7 +696,9 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             IVSHMEM_DPRINTF("Set the limit in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
             IVSHMEM_DPRINTF("[Host %d] Addr of peer_bar_config: 0x%lx. Addr of local bar_config: 0x%lx\n", s->self_number, (void*)s->peer_bar_config, (void*)s->bar_config);
             break;
-
+        case IDT_NT_NTINTMSK:
+            s->gregs->nt_int_mask = (uint32_t)val;
+            IVSHMEM_DPRINTF("Write set global interrupt mask to: %d\n", val);
         default:
             IVSHMEM_DPRINTF("Invalid write at addr " HWADDR_FMT_plx  " for config space\n", addr);
     }
@@ -1670,6 +1683,12 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
     s->gregs = &shm_storage->gregs;
+    s->gregs.nt_int_mask = ( 0x1U |         // Message Interrupt
+                            (0x1U << 1) |   // Doorbell Interrupt
+                            (0x1U << 3) |   // Switch Event
+                            (0x1U << 4) |   // Failover Mode Change Initiated (Not used)
+                            (0x1U << 5) |   // Failover Mode Change Completed (Not used)
+                            (0x1U << 7));   // Temperature Sensor Alarm (Not used)
 
     if (s->self_number == 0) {
         s->vm_id_shared = &shm_storage->vm1.id;
