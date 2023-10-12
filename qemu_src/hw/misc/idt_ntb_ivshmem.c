@@ -250,8 +250,8 @@ enum idt_global_config_registers {
 
 enum idt_register_values {
     VALUE_SWPORT0STS = (0x1U << 4) | /* Link up, data link layer is 'DL_up' */ \
-                       (0x3U << 6) | /* Partition is 0x0 */ \
-                       (0x0U << 10),  /* NT Function is enabled */
+                       (0x8U << 6) | /* NT Function with DMA is enabled */ \
+                       (0x0U << 10),  /* Partition is 0x0 */
     VALUE_SWPORT2STS = VALUE_SWPORT0STS,
     VALUE_SWPART0STS = (0x1U << 5), /* Partition is enabled */
     VALUE_NTP0_PCIECMDSTS = (0x1U << 2), /* Bus Master is enabled */
