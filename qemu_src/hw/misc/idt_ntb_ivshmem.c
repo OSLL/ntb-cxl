@@ -122,7 +122,7 @@ typedef struct idt_global_registers {
 typedef struct idt_shared_registers {
     uint32_t db; /* Inbound doorbell (outbound from the peer's view) (related to patrition 0?) */
     uint32_t db_mask; /* Inbound doorbell interrupt mask */
-    uint32_t inbound_mw_part; 
+    uint32_t inbound_mw_part;
     uint64_t ntctl;
 
     uint64_t msgsts; /* Inbound/outbound messages status */
@@ -233,10 +233,10 @@ enum idt_global_config_registers {
 
     /* Partition 0 */
     IDT_SW_SWPART0STS      = 0x3E104U,
-    IDT_SW_SWP0MSGCTL0	   = 0x3EE00U,
-    IDT_SW_SWP0MSGCTL1	   = 0x3EE20U,
-    IDT_SW_SWP0MSGCTL2	   = 0x3EE40U,
-    IDT_SW_SWP0MSGCTL3	   = 0x3EE60U,
+    IDT_SW_SWP0MSGCTL0     = 0x3EE00U,
+    IDT_SW_SWP0MSGCTL1     = 0x3EE20U,
+    IDT_SW_SWP0MSGCTL2     = 0x3EE40U,
+    IDT_SW_SWP0MSGCTL3     = 0x3EE60U,
     /* Switch event registers */
     IDT_SW_SESTS           = 0x3EC00U,
     IDT_SW_SELINKUPSTS     = 0x3EC0CU,
@@ -287,7 +287,7 @@ enum idt_config_registers {
     IDT_NT_NTMTBLDATA  = 0x4D8U,
     GASAADDR           = 0xFF8U,
     GASADATA           = 0xFFCU,
-    
+
     /* Inbound Message Source */
     IDT_NT_INMSGSRC0   = 0x00450U,
     IDT_NT_INMSGSRC1   = 0x00454U,
@@ -428,10 +428,14 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
         IVSHMEM_DPRINTF("Refusing to write to msg register, INMSGSTS%d is non-zero (vm%d 0x%lx)\n",
                 index, s->vm_id + 1, s->peer_regs->msgsts);
         s->regs->msgsts |= (0x1U << (IDT_FLD_OUTMSGSTS0 + index)); /* Set the error status */
-        s->regs->intsts = IDT_NTINTSTS_MSG;
-        if ((s->regs->msgsts_mask & (0x1U << (IDT_FLD_OUTMSGSTS0 + index))) &&
-            (s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
+
+        if ((s->regs->msgsts_mask & ~(0x1U << (IDT_FLD_OUTMSGSTS0 + index))) &&
+                (~s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
+        {
+            s->regs->intsts = IDT_NTINTSTS_MSG;
             interrupt_notify(s, 0);
+        }
+
         return;
     }
 
@@ -441,10 +445,12 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
     if (s->other_vm_id != -1)
     {
         s->peer_regs->msgsts |= (0x1U << (IDT_FLD_INMSGSTS0 + index));
-        s->peer_regs->intsts |= IDT_NTINTSTS_MSG;
         s->peer_regs->inb_msg_src[index] = s->regs->inbound_mw_part;
-        if ((s->peer_regs->msgsts_mask & (0x1U << (IDT_FLD_INMSGSTS0 + index))) && 
-            (s->gregs->nt_int_mask & IDT_NTINTSTS_MSG)){
+
+        if ((~s->peer_regs->msgsts_mask & (0x1U << (IDT_FLD_INMSGSTS0 + index))) &&
+                (~s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
+        {
+            s->peer_regs->intsts |= IDT_NTINTSTS_MSG;
             event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
             IVSHMEM_DPRINTF("Sent message register update notification (vm%d -> vm%d)\n",
                     s->vm_id, s->other_vm_id);
@@ -637,8 +643,8 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 
             if (s->other_vm_id != -1)
             {
-                s->peer_regs->intsts |= IDT_NTINTSTS_DBELL;
-                if (s->gregs->nt_int_mask & IDT_NTINTSTS_DBELL) {
+                if (~s->gregs->nt_int_mask & IDT_NTINTSTS_DBELL) {
+                    s->peer_regs->intsts |= IDT_NTINTSTS_DBELL;
                     event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
                     IVSHMEM_DPRINTF("Sent doorbell register update notification (vm%d -> vm%d)\n",
                             s->vm_id, s->other_vm_id);
@@ -666,8 +672,8 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             assert(val == 1ULL); /* Constrained by device spec */
             s->gregs->segsigsts |= (1UL << 0); /* Assume partition 0 */
             /* TODO: honor SEGSIGMSK */
-            s->peer_regs->intsts |= IDT_NTINTSTS_SEVENT;
-            if (s->gregs->nt_int_mask & IDT_NTINTSTS_SEVENT) {
+            if (~s->gregs->nt_int_mask & IDT_NTINTSTS_SEVENT) {
+                s->peer_regs->intsts |= IDT_NTINTSTS_SEVENT;
                 event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
                 IVSHMEM_DPRINTF("Write to NTGSIGNAL: set flag in SEGSIGSTS and sent an interrupt (vm%d -> vm%d)\n",
                         s->vm_id, s->other_vm_id);
@@ -688,7 +694,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             s->lregs.inbound_mw_bar = (uint32_t)val;
             IVSHMEM_DPRINTF("Set the BAR for the inbound_mw: 0x%lx\n", val);
             break;
-        
+
         case IDT_OOF_LDATA:
             s->peer_bar_config[s->lregs.inbound_mw_bar].ltbase = (uint32_t)val;
             IVSHMEM_DPRINTF("Set the ltbase in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
@@ -1674,7 +1680,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
     s->gregs = &shm_storage->gregs;
-    s->gregs->nt_int_mask = ( 0x1U |         // Message Interrupt
+    s->gregs->nt_int_mask = (0x1U |         // Message Interrupt
                             (0x1U << 1) |   // Doorbell Interrupt
                             (0x1U << 3) |   // Switch Event
                             (0x1U << 4) |   // Failover Mode Change Initiated (Not used)
