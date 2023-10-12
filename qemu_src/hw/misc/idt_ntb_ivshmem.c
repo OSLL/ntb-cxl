@@ -277,6 +277,7 @@ enum idt_config_registers {
     IDT_NT_MSGSTSMSK   = 0x464U,
     IDT_NT_NTMTBLADDR  = 0x4D0U,
     IDT_NT_NTMTBLDATA  = 0x4D8U,
+    IDT_NT_REQIDCAP    = 0x4DCU,
     GASAADDR           = 0xFF8U,
     GASADATA           = 0xFFCU,
 
@@ -803,6 +804,10 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
         case IDT_NT_NTINTMSK:
             ret = s->gregs->nt_int_mask;
             IVSHMEM_DPRINTF("Read global interrupt mask: 0x%lx\n", ret);
+            break;
+        case IDT_NT_REQIDCAP:
+            ret = pci_requester_id(&s->parent_obj);
+            IVSHMEM_DPRINTF("Read REQIDCAP: 0x%lx\n", ret);
             break;
 #define READ_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
             ret = s->bar_config[ind].fld; \
