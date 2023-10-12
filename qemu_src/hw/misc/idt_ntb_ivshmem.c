@@ -259,7 +259,7 @@ enum idt_register_values {
 };
 
 enum idt_default_register_values {
-    VALUE_NTP0_NTCTL = (0x1 << 1), /* Completion is enabled (CPEN flag) */
+    VALUE_NTP0_NTCTL = (0x0 << 1), /* Completion is disabled on start up (CPEN flag) */
     VALUE_NTP2_NTCTL = VALUE_NTP0_NTCTL,
 };
 
