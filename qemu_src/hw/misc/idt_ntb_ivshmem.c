@@ -83,6 +83,15 @@ DECLARE_INSTANCE_CHECKER(IVShmemState, IVSHMEM_NTB_IDT,
             SWITCH_CASE_WRITE_BARREG(reg, fld, 4) \
             SWITCH_CASE_WRITE_BARREG(reg, fld, 5)
 
+#define SWITCH_CASE_INMSG_READ(ind) case IDT_NT_INMSG ## ind: \
+            ret = s->regs->msg[ind]; \
+            IVSHMEM_DPRINTF("[Host %d] Read value 0x%lx from the inbound message register %d\n", s->self_number, ret, ind); \
+            break;
+
+#define SWITCH_CASE_INMSGSRC_READ(ind) case IDT_NT_INMSGSRC ## ind: \
+            ret = s->regs->inb_msg_src[ind]; \
+            IVSHMEM_DPRINTF("[Host %d] Read value 0x%lx from the inbound src message register %d\n", s->self_number, ret, ind); \
+            break;
 
 typedef struct Peer {
     int nb_eventfds;
@@ -536,7 +545,7 @@ static uint64_t get_nt_mtb_data(IVShmemState *s)
     switch (s->lregs.nt_mtb_addr){
         case 0x0U: /* Partion 0 */
             ret = s->gregs->ntmtbl0;
-            IVSHMEM_DPRINTF("MTB: Read partition 0 MTB data: 0x%lx\n", ret);
+            IVSHMEM_DPRINTF("[Host %d] MTB: Read partition 0 MTB data: 0x%lx\n", s->self_number, ret);
             break;
         default:
             IVSHMEM_DPRINTF("MTB: Not implemented read on addr 0x%lx\n", s->lregs.nt_mtb_addr);
@@ -550,7 +559,7 @@ static void set_nt_mtb_data(IVShmemState *s, uint32_t val)
     switch (s->lregs.nt_mtb_addr){
         case 0x0U: /* Partion 0 */
             s->gregs->ntmtbl0 = val;
-            IVSHMEM_DPRINTF("MTB: Set partition 0 MTB data: 0x%x\n", val);
+            IVSHMEM_DPRINTF("[Host %d] MTB: Set partition 0 MTB data: 0x%x\n", s->self_number, val);
             break;
         default:
             IVSHMEM_DPRINTF("MTB: Not implemented write on addr 0x%lx\n", s->lregs.nt_mtb_addr);
@@ -596,11 +605,11 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             break;
         case IDT_NT_NTMTBLADDR:
             s->lregs.nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
-            IVSHMEM_DPRINTF("Set NTMTBLADDR: 0x%lx\n", s->lregs.nt_mtb_addr);
+            IVSHMEM_DPRINTF("[Host %d] Set NTMTBLADDR: 0x%lx\n", s->self_number, s->lregs.nt_mtb_addr);
             break;
         case IDT_NT_NTMTBLDATA:
             set_nt_mtb_data(s, val);
-            IVSHMEM_DPRINTF("Handled NTMTBLDATA write: 0x%lx\n", val);
+            IVSHMEM_DPRINTF("[Host %d] Handled NTMTBLDATA write: 0x%lx\n", s->self_number, val);
             break;
         case IDT_NT_NTINTSTS: /* interrupt status */
             s->regs->intsts &= ~val;
@@ -736,44 +745,22 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             break;
         case IDT_NT_NTMTBLDATA:
             ret = get_nt_mtb_data(s);
-            IVSHMEM_DPRINTF("Handled NTMTBLDATA read: 0x%lx\n", ret);
+            IVSHMEM_DPRINTF("[Host %d] Handled NTMTBLDATA read: 0x%lx\n", s->self_number, ret);
             break;
         case IDT_NT_NTINTSTS: /* interrupt status */
             ret = s->regs->intsts;
             IVSHMEM_DPRINTF("Read local NTINTSTS: 0x%lx\n", ret);
             break;
-        case IDT_NT_INMSG0:
-            ret = s->regs->msg[0];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 0);
-            break;
-        case IDT_NT_INMSG1:
-            ret = s->regs->msg[1];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 1);
-            break;
-        case IDT_NT_INMSG2:
-            ret = s->regs->msg[2];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 2);
-            break;
-        case IDT_NT_INMSG3:
-            ret = s->regs->msg[3];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register %d\n", ret, 3);
-            break;
-        case IDT_NT_INMSGSRC0:
-            ret = s->regs->inb_msg_src[0];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 0);
-            break;
-        case IDT_NT_INMSGSRC1:
-            ret = s->regs->inb_msg_src[1];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 1);
-            break;
-        case IDT_NT_INMSGSRC2:
-            ret = s->regs->inb_msg_src[2];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 2);
-            break;
-        case IDT_NT_INMSGSRC3:
-            ret = s->regs->inb_msg_src[3];
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound src message register %d\n", ret, 3);
-            break;
+
+        SWITCH_CASE_INMSG_READ(0)
+        SWITCH_CASE_INMSG_READ(1)
+        SWITCH_CASE_INMSG_READ(2)
+        SWITCH_CASE_INMSG_READ(3)
+        SWITCH_CASE_INMSGSRC_READ(0)
+        SWITCH_CASE_INMSGSRC_READ(1)
+        SWITCH_CASE_INMSGSRC_READ(2)
+        SWITCH_CASE_INMSGSRC_READ(3)
+
         case IDT_NT_INDBELLSTS:
             ret = s->regs->db;
             IVSHMEM_DPRINTF("Read the inbound doorbell: 0x%lx\n", ret);
