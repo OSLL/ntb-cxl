@@ -417,14 +417,15 @@ static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
     if (s->peer_regs->msgsts & (0x1U << (IDT_FLD_INMSGSTS0 + index)))
     {
         IVSHMEM_DPRINTF("Refusing to write to msg register, INMSGSTS%d is non-zero (vm%d 0x%lx)\n",
-                index, s->vm_id + 1, s->peer_regs->msgsts);
+                index, s->vm_id, s->peer_regs->msgsts);
         s->regs->msgsts |= (0x1U << (IDT_FLD_OUTMSGSTS0 + index)); /* Set the error status */
 
         if ((s->regs->msgsts_mask & ~(0x1U << (IDT_FLD_OUTMSGSTS0 + index))) &&
                 (~s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
         {
-            s->regs->intsts = IDT_NTINTSTS_MSG;
+            s->regs->intsts |= IDT_NTINTSTS_MSG;
             interrupt_notify(s, 0);
+            IVSHMEM_DPRINTF("Notified host about message transmission failure (vm%d)\n", s->vm_id);
         }
 
         return;
@@ -653,7 +654,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
         case IDT_NT_MSGSTS:
             s->regs->msgsts &= ~val; /* Substraction with a module of 2 */
             IVSHMEM_DPRINTF("Cleared the local MSGSTS, new value: 0x%lx (vm%d)\n",
-                    s->regs->msgsts, s->vm_id + 1);
+                    s->regs->msgsts, s->vm_id);
             break;
         case IDT_NT_MSGSTSMSK:
             s->regs->msgsts_mask = val;
@@ -662,11 +663,12 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
         case IDT_NT_NTGSIGNAL:
             assert(val == 1ULL); /* Constrained by device spec */
             s->gregs->segsigsts |= (1UL << 0); /* Assume partition 0 */
+            IVSHMEM_DPRINTF("Write to NTSIGNAL: set flag in SEGSIGSTS\n");
             /* TODO: honor SEGSIGMSK */
             if (~s->gregs->nt_int_mask & IDT_NTINTSTS_SEVENT) {
                 s->peer_regs->intsts |= IDT_NTINTSTS_SEVENT;
                 event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
-                IVSHMEM_DPRINTF("Write to NTGSIGNAL: set flag in SEGSIGSTS and sent an interrupt (vm%d -> vm%d)\n",
+                IVSHMEM_DPRINTF("Notified the peer about SEGSIGSTS update (vm%d -> vm%d)\n",
                         s->vm_id, s->other_vm_id);
             }
             break;
@@ -688,23 +690,24 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 
         case IDT_OOF_LDATA:
             s->peer_bar_config[s->lregs.inbound_mw_bar].ltbase = (uint32_t)val;
-            IVSHMEM_DPRINTF("Set the ltbase in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            IVSHMEM_DPRINTF("Set the ltbase in BAR%u of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
             break;
 
         case IDT_OOF_HDATA:
             s->peer_bar_config[s->lregs.inbound_mw_bar].utbase = (uint32_t)val;
-            IVSHMEM_DPRINTF("Set the utbase in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            IVSHMEM_DPRINTF("Set the utbase in BAR%u of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
             break;
 
         case IDT_OOF_LLIMIT:
         case IDT_OOF_HLIMIT:
             s->peer_bar_config[s->lregs.inbound_mw_bar].limit = (uint32_t)val;
-            IVSHMEM_DPRINTF("Set the limit in BAR%ld of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
-            IVSHMEM_DPRINTF("[Host %d] Addr of peer_bar_config: 0x%lx. Addr of local bar_config: 0x%lx\n", s->self_number, (void*)s->peer_bar_config, (void*)s->bar_config);
+            IVSHMEM_DPRINTF("Set the limit in BAR%u of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            IVSHMEM_DPRINTF("[Host %d] Addr of peer_bar_config: 0x%p. Addr of local bar_config: 0x%p\n",
+                    s->self_number, (void*)s->peer_bar_config, (void*)s->bar_config);
             break;
         case IDT_NT_NTINTMSK:
             s->gregs->nt_int_mask = (uint32_t)val;
-            IVSHMEM_DPRINTF("Set global interrupt mask to: %d\n", val);
+            IVSHMEM_DPRINTF("Set global interrupt mask to: 0x%lx\n", val);
             break;
         default:
             IVSHMEM_DPRINTF("Invalid write at addr " HWADDR_FMT_plx  " for config space\n", addr);
@@ -798,7 +801,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             break;
         case IDT_NT_NTINTMSK:
             ret = s->gregs->nt_int_mask;
-            IVSHMEM_DPRINTF("Read global interrupt mask: %d\n", ret);
+            IVSHMEM_DPRINTF("Read global interrupt mask: 0x%lx\n", ret);
             break;
 #define READ_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
             ret = s->bar_config[ind].fld; \
@@ -907,7 +910,9 @@ static void idt_bar_write(void *opaque, hwaddr addr,
 
     if (!c.limit) {
         error_report("idt-ntb-ivshmem: memory window is inactive, refusing to write");
-        IVSHMEM_DPRINTF("[Host %d] Refused write on BAR%d (ltbase: 0x%lx, utbase: 0x%lx, limit: 0x%lx, setup: 0x%lx) Addr: 0x%lx\n", s->self_number, idx, c.ltbase, c.utbase, c.limit, c.setup, (void*)s->bar_config);
+        IVSHMEM_DPRINTF("[Host %d] Refused write on BAR%d "
+                "(ltbase: 0x%x, utbase: 0x%x, limit: 0x%x, setup: 0x%x) Addr: 0x%p\n",
+                s->self_number, idx, c.ltbase, c.utbase, c.limit, c.setup, (void*)s->bar_config);
         return;
     }
 
