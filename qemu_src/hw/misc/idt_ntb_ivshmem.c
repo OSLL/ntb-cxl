@@ -4,6 +4,7 @@
  * Authors:
  * - Tinyakov Sergey
  * - Gavrilov Andrei
+ * - Maxim Karasev
  *
  * Based On: ivshmem.c
  *          Copyright (c) 20?? Cam Macdonell <cam@cs.ualberta.ca>
