@@ -1,8 +1,77 @@
 # NTB/CXL Bridge for InterVM communication
 
+## Project description
+This project implements the virtualization of NTB functionality of the IDT 89HPES24NT6AG2 PCI Express Switch device in QEMU. The project has fixed the Linux Kernel version 6.1 and the QEMU version v8.0.2. The goal of the project is to implement a virtual NTB connection between 2 guest machines. The target scenario is the use of RDMA technology through the NTRDMA driver.
+
+Implemented at the moment:
+- VM guest images are based on `core-image-full-cmdline`. Added to the image: `ntb_hw_idt`, `ntb`, `ntb_transport`, `ntb_tool` as a module, `ntb_perf` as a module, `ntrdma` as a module and necessary dependencies.
+- Added `idt-ntb-ivshmem` device to QEMU.
+- Support for NTB registers and functionality:
+  - NTB link functions
+  - Message registers
+  - Doorbell registers
+  - Interrupts and interrupt masking
+  - Memory window translation
+  - Implementation of mw translation in DIR mode
+  - Direct read/write into DMA VM space be i/o operations into mw
+  - Added unsupported by IDT 89HPES24NT6AG2 NTB operations: `mw_set_trans` and `mw_clear_trans` functions (Necessary for `ntb_perf`). So the `ntb_hw_idt` driver was modified.
+- PCIe port 0 and port 2 are configured
+- Only one partition is implemented
+
+
+## Known issues
+- `ntb_perf` test with `use_dma` flag failes (due to the lack of implementation of the DMA controller)
+- `ntrdma` init failes with error (for the same reason as the previous point)
+- if `run_vm` or `run_vms` failes with dynamic link error you need to uncommnet string: `cp $(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name qemu-system-x86_64 | sed -n 2p) $(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name qemu-system-x86_64 | sed -n 1p)` in the `scripts/build_yocto.sh` and rerun qemu build by the command `./run_container.sh --command=build --build=qemu`
+
+
 ## Requirements
 - [Docker](https://docs.docker.com/engine/install/)
 
+## Quick start
+1) Build the project in the docker container:
+```
+./run_container.sh --command=enter_qemu_devenv
+./run_container.sh --command=finish_qemu_devenv
+./run_container.sh --command=build
+```
+2) Run VMs:
+```
+./run_container.sh --command=run_vms --qemu-map-ram-to-shm=1000
+```
+3) Connect to the VM1 and VM2 in the another teminals `ssh root@localhost -p7001` and `ssh root@localhost -p7002`
+
+4) Run `ntb_perf` module to test the data transmition on both VMs: `modprobe ntb_perf chunk_order=8 total_order=20`. `chunk_order` is data chunk order [2^n] to transfer, `total_order` is the total data order [2^n] to transfer (a large total order can lead to a MW allocation error due to the BAR size limit and memory limitations of the virtual machine).
+
+5) Check connection info `cat /sys/kernel/debug/ntb_perf/0000\:00\:03.0/info`.
+
+Example:
+```
+root@qemux86-64:~# cat /sys/kernel/debug/ntb_perf/0000\:00\:03.0/info 
+    Performance measuring tool info:
+
+Local port 2, Global index 1
+Test status: idle
+Port 0 (0), Global index 0:
+	Link status: up
+	Out buffer addr 0x00000000e4157aba
+	Out buff phys addr 0x00000000fe900000[p]
+	Out buffer size 0x0000000000100000
+	Out buffer xlat 0x0000000004b00000[p]
+	In buffer addr 0x00000000a1d2914a
+	In buffer size 0x0000000000100000
+	In buffer xlat 0x0000000004b00000[p]
+```
+
+6) Run test by `echo 0 > /sys/kernel/debug/ntb_perf/0000\:00\:03.0/run ` and check the result by `cat /sys/kernel/debug/ntb_perf/0000\:00\:03.0/run`.
+
+Example:
+```
+root@qemux86-64:~# echo 0 > /sys/kernel/debug/ntb_perf/0000\:00\:03.0/run 
+root@qemux86-64:~# cat /sys/kernel/debug/ntb_perf/0000\:00\:03.0/run 
+    Peer 0 test statistics:
+0: copied 1048576 bytes in 1325470 usecs, 0 MBytes/s
+```
 ## Usage
 
 ### Using docker
@@ -30,7 +99,15 @@ that the **docker case is used**
 
 ## Build project
 
-Run `./run_container.sh --command=build` to build the project
+First of all to add the `idt-ntb-ivshmem` device to the qemu it is necessary to create a patch from local source files:
+```
+./run_container.sh --command=enter_qemu_devenv
+./run_container.sh --command=finish_qemu_devenv
+```
+
+After `finish_qemu_devenv` command patch will be created and appended to the `meta-ntb-cxl` layer.
+
+Run `./run_container.sh --command=build` to build the project.
 
 ## Run VM
 
@@ -42,9 +119,9 @@ User credentials to login into the vm:
 
 ## Run two connected VMs with `idt-ntb-ivshmem`
 
-Run the following command: `./run_container.sh --command=run_vms`
+Run the following command: `./run_container.sh --command=run_vms --qemu-map-ram-to-shm=1000`. Flag `--qemu-map-ram-to-shm=1000` is necessary for memory window i/o operations to directly read/write into vm memory.
 
-It uses the `scripts/run_vms.sh` script to run `ivshmem-server` and virtual machines
+It uses the `scripts/run_vms.sh` script to run `ivshmem-server` and virtual machines. 
 
 QEMU options can be customized via CLI options:
 - `--ivshmem-common-opts`
@@ -59,6 +136,10 @@ To override the default value instead, suffix the option with `-override`,
 like `common-opts-override`. Run `--help` for more information
 
 To see default values of that options, refer to the script itself.
+
+To connect to the VMs can be used telnet or ssh protocol:
+- telnet port 8001 for VM1 and port 8002 for VM2
+- ssh port 7001 for VM1 and port 7002 for VM2
 
 ## QEMU development
 
@@ -91,11 +172,11 @@ It might be useful to be able to read/write to a VM memory directly.
 
 It's possible using one the following commands:
 ```ShellSessinon
-$ ./run_container.sh --cmd=run_vm --qemu-map-ram-to-shm[=SIZE]
+$ ./run_container.sh --command=run_vm --qemu-map-ram-to-shm[=SIZE]
 ```
 or
 ```ShellSessinon
-$ ./run_container.sh --cmd=run_vms --qemu-map-ram-to-shm[=SIZE]
+$ ./run_container.sh --command=run_vms --qemu-map-ram-to-shm[=SIZE]
 ```
 
 The `=SIZE` is optional. The default is `256`.
