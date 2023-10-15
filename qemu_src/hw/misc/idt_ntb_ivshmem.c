@@ -887,11 +887,19 @@ static uint64_t idt_bar_read(void *opaque, hwaddr addr,
         }
     }
 
-    // TODO: honor size
-    ret = qatomic_load_acquire((uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr));
+    assert(size == 4 || size == 8);
+    switch (size) {
+        case 4:
+            ret = qatomic_load_acquire(
+                    (uint32_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr));
+            break;
+        case 8:
+            ret = qatomic_load_acquire(
+                    (uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr));
+    }
 
-    IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx (bar is at 0x%lx)\n",
-            idx, ret, addr, s->bars[idx].addr);
+    IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx (bar: 0x%lx, access size: %u)\n",
+            idx, ret, addr, s->bars[idx].addr, size);
 
     return ret;
 }
@@ -922,11 +930,21 @@ static void idt_bar_write(void *opaque, hwaddr addr,
         }
     }
 
-    IVSHMEM_DPRINTF("BAR%d region write: value 0x%lx at offset 0x%lx (bar is at 0x%lx)\n",
-            idx, value, addr, s->bars[idx].addr);
+    IVSHMEM_DPRINTF("BAR%d region write: value 0x%lx at offset 0x%lx (bar: 0x%lx, access size: %u)\n",
+            idx, value, addr, s->bars[idx].addr, size);
 
-    // TODO: honor size
-    qatomic_store_release((uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr), value);
+    assert(size == 4 || size == 8);
+    switch (size) {
+        case 4:
+            qatomic_store_release(
+                    (uint32_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr),
+                    (uint32_t)value);
+            break;
+        case 8:
+            qatomic_store_release(
+                    (uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr),
+                    value);
+    }
 }
 
 #define BAR_READ_FN(n) static uint64_t idt_bar ## n ## _read(void *opaque, \
@@ -956,7 +974,7 @@ BAR_FNS(5)
     .write = idt_bar ## n ## _write, \
     .endianness = DEVICE_LITTLE_ENDIAN, \
     .impl = { \
-        .min_access_size = 8, \
+        .min_access_size = 4, \
         .max_access_size = 8, \
     }, \
 }
@@ -1865,7 +1883,7 @@ static void ivshmem_ntb_idt_class_init(ObjectClass *klass, void *data)
     k->config_read = ivshmem_read_config;
     k->vendor_id = PCI_VENDOR_ID_IVSHMEM;
     k->device_id = PCI_DEVICE_ID_IVSHMEM;
-    k->class_id = PCI_CLASS_BRIDGE_OTHER;
+    k->class_id = PCI_CLASS_BRIDGE_OTHER; /* NT function */
     k->revision = 0;
     dc->reset = ivshmem_reset;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
