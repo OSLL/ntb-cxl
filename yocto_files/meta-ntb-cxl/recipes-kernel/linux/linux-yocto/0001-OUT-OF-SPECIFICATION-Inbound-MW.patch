@@ -1,0 +1,193 @@
+From ee26da2a4bde2394cf1d2d52d54a995fa5b9e2ca Mon Sep 17 00:00:00 2001
+From: OpenEmbedded <oe.patch@oe>
+Date: Tue, 10 Oct 2023 13:26:49 +0000
+Subject: [PATCH] OUT-OF-SPECIFICATION Inbound MW
+
+---
+ drivers/ntb/hw/idt/ntb_hw_idt.c | 128 +++++++++++++++++++++++++++++++-
+ drivers/ntb/hw/idt/ntb_hw_idt.h |  19 ++++-
+ 2 files changed, 145 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/ntb/hw/idt/ntb_hw_idt.c b/drivers/ntb/hw/idt/ntb_hw_idt.c
+index 0ed6f809ff2e..5809db11f369 100644
+--- a/drivers/ntb/hw/idt/ntb_hw_idt.c
++++ b/drivers/ntb/hw/idt/ntb_hw_idt.c
+@@ -1342,6 +1342,130 @@ static int idt_ntb_peer_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
+ 	return 0;
+ }
+ 
++/*
++ * idt_ntb_mw_set_trans() - set a translation address of a memory window
++ *				 (NTB API callback)
++ * @ntb:	NTB device context.
++ * @pidx:	Port index of peer device the translation address received from.
++ * @widx:	Memory window index.
++ * @addr:	The dma address of the shared memory to access.
++ * @size:	The size of the shared memory to access.
++ *
++ * The Direct address translation and LUT base translation is initialized a
++ * bit differenet. Although the parameters restriction are now determined by
++ * the same code.
++ * 
++ * BE CAREFUL. This is a OUT-OF-SPECIFICATION!!!
++ *
++ * Return: Zero on success, otherwise an error number.
++ */
++static int idt_ntb_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
++				     	        u64 addr, resource_size_t size)
++{
++	struct idt_ntb_dev *ndev = to_ndev_ntb(ntb);
++	struct idt_mw_cfg *mw_cfg;
++	u32 data = 0, lutoff = 0;
++
++	if (pidx < 0 || ndev->peer_cnt <= pidx)
++		return -EINVAL;
++
++	if (widx < 0 || ndev->mw_cnt <= widx)
++		return -EINVAL;
++
++	/*
++	 * Retrieve the memory window config to make sure the passed arguments
++	 * fit it restrictions
++	 */
++	mw_cfg = &ndev->mws[widx];
++	if (!IS_ALIGNED(addr, mw_cfg->addr_align))
++		return -EINVAL;
++	if (!IS_ALIGNED(size, mw_cfg->size_align) || size > mw_cfg->size_max)
++		return -EINVAL;
++
++	/* DIR and LUT based translations are initialized differently */
++	if (mw_cfg->type == IDT_MW_DIR) {
++		// const struct idt_ntb_bar *bar = &ntdata_tbl.bars[mw_cfg->bar];
++		// u64 limit;
++		// /* Set destination partition of translation */
++		// data = idt_nt_read(ndev, bar->setup);
++		// data = SET_FIELD(BARSETUP_TPART, data, ndev->peers[pidx].part);
++		// idt_nt_write(ndev, bar->setup, data);
++		// /* Set translation base address */
++		// idt_nt_write(ndev, bar->ltbase, (u32)addr);
++		// idt_nt_write(ndev, bar->utbase, (u32)(addr >> 32));
++		// /* Set the custom BAR aperture limit */
++		// limit = pci_bus_address(ntb->pdev, mw_cfg->bar) + size;
++		// idt_nt_write(ndev, bar->limit, (u32)limit);
++		// if (IS_FLD_SET(BARSETUP_TYPE, data, 64))
++		// 	idt_nt_write(ndev, (bar + 1)->limit, (limit >> 32));
++		/*-------*/
++		const struct idt_ntb_bar *bar = &ntdata_tbl.bars[mw_cfg->bar];
++		u64 limit;
++		data = idt_nt_read(ndev, bar->setup);
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_TPART, ndev->peers[pidx].part);
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_LUTOFF, mw_cfg->bar);  // BAR is just an index of MW
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_LDATA, (u32)addr);
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_HDATA, (u32)(addr >> 32));
++		limit = pci_bus_address(ntb->pdev, mw_cfg->bar) + size;
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_LLIMIT, (u32)limit);
++		if (IS_FLD_SET(BARSETUP_TYPE, data, 64)){
++			idt_nt_write(ndev, IDT_OUT_OF_SPEC_LUTOFF, mw_cfg->bar + 1);
++			idt_nt_write(ndev, IDT_OUT_OF_SPEC_HLIMIT, (u32)(limit >> 32));
++		}
++	} else {
++		/* NOT IMPLEMENTED */
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++/*
++ * idt_ntb_mw_clear_trans() - clear the outbound MW translation address
++ *				   (NTB API callback)
++ * @ntb:	NTB device context.
++ * @pidx:	Port index of peer device.
++ * @widx:	Memory window index.
++ *
++ * It effectively disables the translation over the specified outbound MW.
++ *
++ * Return: Zero on success, otherwise an error number.
++ */
++static int idt_ntb_mw_clear_trans(struct ntb_dev *ntb, int pidx,
++					int widx)
++{
++	struct idt_ntb_dev *ndev = to_ndev_ntb(ntb);
++	struct idt_mw_cfg *mw_cfg;
++
++	if (pidx < 0 || ndev->peer_cnt <= pidx)
++		return -EINVAL;
++
++	if (widx < 0 || ndev->mw_cnt <= widx)
++		return -EINVAL;
++
++	mw_cfg = &ndev->mws[widx];
++
++	/* DIR and LUT based translations are initialized differently */
++	if (mw_cfg->type == IDT_MW_DIR) {
++		const struct idt_ntb_bar *bar = &ntdata_tbl.bars[mw_cfg->bar];
++		u32 data;
++		data = idt_nt_read(ndev, bar->setup);
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_TPART, ndev->peers[pidx].part);
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_LUTOFF, mw_cfg->bar);  // BAR is just an index of MW
++		idt_nt_write(ndev, IDT_OUT_OF_SPEC_LLIMIT, 0);
++		if (IS_FLD_SET(BARSETUP_TYPE, data, 64)){
++			idt_nt_write(ndev, IDT_OUT_OF_SPEC_LUTOFF, mw_cfg->bar + 1);
++			idt_nt_write(ndev, IDT_OUT_OF_SPEC_HLIMIT, 0);
++		}
++	} else {
++		/* NOT IMPLEMENTED */
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++
+ /*
+  * idt_ntb_peer_mw_clear_trans() - clear the outbound MW translation address
+  *				   (NTB API callback)
+@@ -2267,7 +2391,9 @@ static const struct ntb_dev_ops idt_ntb_ops = {
+ 	.msg_set_mask		= idt_ntb_msg_set_mask,
+ 	.msg_clear_mask		= idt_ntb_msg_clear_mask,
+ 	.msg_read		= idt_ntb_msg_read,
+-	.peer_msg_write		= idt_ntb_peer_msg_write
++	.peer_msg_write		= idt_ntb_peer_msg_write,
++	.mw_set_trans		= idt_ntb_mw_set_trans,
++	.mw_clear_trans		= idt_ntb_mw_clear_trans
+ };
+ 
+ /*
+diff --git a/drivers/ntb/hw/idt/ntb_hw_idt.h b/drivers/ntb/hw/idt/ntb_hw_idt.h
+index 2f1aa121b0cf..26be521a62f9 100644
+--- a/drivers/ntb/hw/idt/ntb_hw_idt.h
++++ b/drivers/ntb/hw/idt/ntb_hw_idt.h
+@@ -585,7 +585,7 @@
+  * @IDT_REG_SW_MAX:	Maximum global register value
+  */
+ #define IDT_REG_ALIGN			4
+-#define IDT_REG_PCI_MAX			0x00FFFU
++#define IDT_REG_PCI_MAX			0x01018U
+ #define IDT_REG_SW_MAX			0x3FFFFU
+ 
+ /*
+@@ -1009,6 +1009,23 @@
+ #define IDT_TEMP_MIN_OFFSET	-64000
+ #define IDT_TEMP_MAX_OFFSET	63500
+ 
++/*
++ * IDT Registers for inbound memory window (OUT-OF-SPECIFICATION)
++ * @IDT_OUT_OF_SPEC_TPART:  Target part of the other side
++ * @IDT_OUT_OF_SPEC_LUTOFF: Offset of the window
++ * @IDT_OUT_OF_SPEC_LDATA:  Lower 32-bit of the address
++ * @IDT_OUT_OF_SPEC_HDATA:  Higher 32-bit of the address
++ * @IDT_OUT_OF_SPEC_LLIMIT:  Higher 32-bit of the limit value
++ * @IDT_OUT_OF_SPEC_HLIMIT:  Higher 32-bit of the limit value
++ */
++#define IDT_OUT_OF_SPEC_TPART   0x1000U
++#define IDT_OUT_OF_SPEC_LUTOFF	0x1004U
++#define IDT_OUT_OF_SPEC_LDATA	0x1008U
++#define IDT_OUT_OF_SPEC_HDATA	0x100CU
++#define IDT_OUT_OF_SPEC_LLIMIT	0x1010U
++#define IDT_OUT_OF_SPEC_HLIMIT	0x1014U
++
++
+ /*
+  * Temperature sensor values enumeration
+  * @IDT_TEMP_CUR:	Current temperature
