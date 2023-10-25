@@ -1,0 +1,245 @@
+[   40.989703]  </TASK>
+[   41.000214] ntrdma 0000:00:03.0: _ntc_link_enable: 1290: link enabled by ntrdma_probe
+[   44.245252] [NTRDMA] Started ntc_ntb_link_get_event
+[   44.245520] [IDT_NTB] Peers status is 0
+[   44.245658] [NTRDMA] Stopping pinpong
+[   44.245832] Request dma returned 1
+[   44.245863] Link state is 2
+[   44.245927] ntrdma 0000:00:03.0: ntc_ntb_enabled: 811: checking if link is up
+[   44.245961] [IDT_NTB] Peers status is 0
+[   49.114369] [NTRDMA] Started ntc_ntb_link_get_event
+[   49.114465] [IDT_NTB] Peers status is 0
+[   49.114499] [NTRDMA] Stopping pinpong
+[   49.114514] Request dma returned 1
+[   49.114519] Link state is 2
+[   49.114535] ntrdma 0000:00:03.0: ntc_ntb_enabled: 811: checking if link is up
+[   49.114556] [IDT_NTB] Peers status is 0
+[   49.120212] [NTRDMA] Started ntc_ntb_link_get_event
+[   49.120358] [IDT_NTB] Peers status is 1
+[   49.120374] [NTRDMA] Started pinpong
+[   49.120622] Request dma returned 1
+[   49.120631] Link state is 2
+[   49.120647] ntrdma 0000:00:03.0: ntc_ntb_enabled: 811: checking if link is up
+[   49.120676] [IDT_NTB] Peers status is 1
+[   49.120699] ntrdma 0000:00:03.0: ntc_ntb_enabled: 815: link is up!
+[   49.120742] [IDT_NTB] Peers status is 1
+[   49.120882] ntc_ntb:set_memory_windows_on_device: logical MW0 @0x5900000 len=0x100000
+[   49.120898] ntc_ntb:set_memory_windows_on_device: ntb_mw_set_trans actual MW0 @0x5900000 len=0x100000
+[   49.121158] Link event is 0
+[   49.121176] [NTRDMA] Started ntc_ntb_link_get_event
+[   49.121197] [IDT_NTB] Peers status is 1
+[   49.121203] [NTRDMA] Started pinpong
+[   49.121219] Request dma returned 1
+[   49.121223] Link state is 3
+[   49.121228] Link event is 0
+[   51.122890] ntrdma 0000:00:03.0: _ntc_link_enable: 1290: link enabled by link_store
+[   51.348519] [NTRDMA] Started ntc_ntb_link_get_event
+[   51.348767] [IDT_NTB] Peers status is 1
+[   51.348829] [NTRDMA] Started pinpong
+[   51.349009] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 3 event 3
+[   51.349123] Request dma returned 1
+[   51.349152] Link state is 3
+[   51.349181] Link event is 3
+[   51.349339] ntrdma 0000:00:03.0: ntc_ntb_send_version: 835: link send version
+[   51.596196] [NTRDMA] Started ntc_ntb_link_get_event
+[   51.596821] [IDT_NTB] Peers status is 1
+[   51.596898] [NTRDMA] Started pinpong
+[   51.597019] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 4 event 5
+[   51.597115] Request dma returned 1
+[   51.597143] Link state is 4
+[   51.597805] ntrdma 0000:00:03.0: ntc_ntb_choose_version_and_send_addr: 900: link choose version
+[   51.598228] ntrdma 0000:00:03.0: ntc_ntb_choose_version_and_send_addr: 920: Agree on version 3
+[   51.598683] [IDT_NTB] Peers status is 1
+[   51.598812] ntc_ntb:set_memory_windows_on_device: logical MW1 @0x0 len=0x100000
+[   51.598867] ntc_ntb:set_memory_windows_on_device: ntb_mw_set_trans actual MW1 @0x0 len=0x100000
+[   51.599086] ntc_ntb:ntc_ntb_send_addr: sending to peer - dead_zone_size=0 trans_len=1048576
+[   51.599204] ntc_ntb:ntc_ntb_send_addr: sending to peer - dead_zone_size=0 trans_len=1048576
+[   51.599854] [NTRDMA] Started ntc_ntb_db_config_and_recv_addr
+[   51.599964] Request dma returned 1
+[   51.600022] [NTRDMA] After ntc_request_dma
+[   51.600100] ntc_ntb:ntc_ntb_recv_addr: mw 0 - dead_zone_size=0, trans_len=1048576
+[   51.600184] ntc_ntb:ntc_ntb_recv_addr: mw 1 - dead_zone_size=0, trans_len=1048576
+[   51.601703] ntrdma 0000:00:03.0: ntc_ntb_db_config_and_recv_addr: 1020: link signaling method configured
+[   51.601812] [NTRDMA] link signaling method configured
+[   51.844107] [NTRDMA] Started ntc_ntb_link_get_event
+[   51.844314] [IDT_NTB] Peers status is 1
+[   51.844616] [NTRDMA] Started pinpong
+[   51.844743] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 6 event 7
+[   51.844826] Request dma returned 1
+[   51.844855] Link state is 6
+[   51.845149] ntrdma 0000:00:03.0: ntc_ntb_link_commit: 1034: link commit - verifying both sides sync
+[   51.845628] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 0
+[   51.847112] ntrdma 0000:00:03.0: ntc_ntb_hello: 1073: hello callback phase 0 done 0
+[   52.092258] [NTRDMA] Started ntc_ntb_link_get_event
+[   52.092850] [IDT_NTB] Peers status is 1
+[   52.092931] [NTRDMA] Started pinpong
+[   52.093035] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 8 event 9
+[   52.093118] Request dma returned 1
+[   52.093146] Link state is 8
+[   52.093664] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 1
+[   52.096717] ntrdma 0000:00:03.0: ntc_ntb_hello: 1073: hello callback phase 1 done 0
+[   52.096925] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 2
+[   52.098034] ntrdma 0000:00:03.0: ntc_peer_addr: 515: ERROR: mw 1 offset 0x3543000 is beyond memory len 0x100000
+[   52.098307] ntrdma 0000:00:03.0: ntrdma_dev_vbell_enable: 134: ERROR: Failed to map peer vbell buff
+[   52.098704] ntrdma 0000:00:03.0: ntrdma_dev_hello_phase2: 235: ERROR: failed to enable vbell rc -5
+[   52.098859] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1227: ERROR: ntc_ntb_hello failed err=-5
+[   52.099019] ntrdma 0000:00:03.0: ntc_ntb_error: 648: ERROR: link error
+[   52.099276] [NTRDMA] Started ntc_ntb_link_get_event
+[   52.099620] [IDT_NTB] Peers status is 1
+[   52.099667] [NTRDMA] Started pinpong
+[   52.099741] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 0 event 9
+[   52.099807] Request dma returned 1
+[   52.099834] Link state is 0
+[   52.099970] ntrdma 0000:00:03.0: ntc_ntb_quiesce: 683: link quiesce
+[   52.101903] ntrdma 0000:00:03.0: ntrdma_dev_cmd_quiesce: 384: cmd quiesce starting ...
+[   52.102785] ntrdma 0000:00:03.0: ntrdma_dev_cmd_quiesce: 424: cmd quiesce done
+[   52.103217] ntrdma 0000:00:03.0: ntc_ntb_reset: 796: link reset
+[   52.340078] [NTRDMA] Started ntc_ntb_link_get_event
+[   52.340299] [IDT_NTB] Peers status is 1
+[   52.340608] [NTRDMA] Started pinpong
+[   52.340718] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 2 event 2
+[   52.340832] Request dma returned 1
+[   52.340863] Link state is 2
+[   52.340914] ntrdma 0000:00:03.0: ntc_ntb_enabled: 811: checking if link is up
+[   52.341029] [IDT_NTB] Peers status is 1
+[   52.341092] ntrdma 0000:00:03.0: ntc_ntb_enabled: 815: link is up!
+[   52.341234] [IDT_NTB] Peers status is 1
+[   52.341282] ntc_ntb:set_memory_windows_on_device: logical MW0 @0x5900000 len=0x100000
+[   52.341523] ntc_ntb:set_memory_windows_on_device: ntb_mw_set_trans actual MW0 @0x5900000 len=0x100000
+[   52.341728] Link event is 2
+[   52.341791] [NTRDMA] Started ntc_ntb_link_get_event
+[   52.341930] [IDT_NTB] Peers status is 1
+[   52.341970] [NTRDMA] Started pinpong
+[   52.342037] Request dma returned 1
+[   52.342065] Link state is 3
+[   52.342091] Link event is 2
+[   52.588263] [NTRDMA] Started ntc_ntb_link_get_event
+[   52.588698] [IDT_NTB] Peers status is 1
+[   52.588787] [NTRDMA] Started pinpong
+[   52.588893] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 3 event 4
+[   52.588979] Request dma returned 1
+[   52.589008] Link state is 3
+[   52.589042] Link event is 4
+[   52.589089] ntrdma 0000:00:03.0: ntc_ntb_send_version: 835: link send version
+[   52.589201] ntrdma 0000:00:03.0: ntc_ntb_choose_version_and_send_addr: 900: link choose version
+[   52.589270] ntrdma 0000:00:03.0: ntc_ntb_choose_version_and_send_addr: 920: Agree on version 3
+[   52.589816] [IDT_NTB] Peers status is 1
+[   52.589884] ntc_ntb:set_memory_windows_on_device: logical MW1 @0x0 len=0x100000
+[   52.589938] ntc_ntb:set_memory_windows_on_device: ntb_mw_set_trans actual MW1 @0x0 len=0x100000
+[   52.590042] ntc_ntb:ntc_ntb_send_addr: sending to peer - dead_zone_size=0 trans_len=1048576
+[   52.590101] ntc_ntb:ntc_ntb_send_addr: sending to peer - dead_zone_size=0 trans_len=1048576
+[   52.835966] [NTRDMA] Started ntc_ntb_link_get_event
+[   52.836173] [IDT_NTB] Peers status is 1
+[   52.836227] [NTRDMA] Started pinpong
+[   52.836679] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 5 event 6
+[   52.836819] Request dma returned 1
+[   52.836854] Link state is 5
+[   52.837009] [NTRDMA] Started ntc_ntb_db_config_and_recv_addr
+[   52.837055] Request dma returned 1
+[   52.837084] [NTRDMA] After ntc_request_dma
+[   52.837114] ntc_ntb:ntc_ntb_recv_addr: mw 0 - dead_zone_size=0, trans_len=1048576
+[   52.837163] ntc_ntb:ntc_ntb_recv_addr: mw 1 - dead_zone_size=0, trans_len=1048576
+[   52.837319] ntrdma 0000:00:03.0: ntc_ntb_db_config_and_recv_addr: 1020: link signaling method configured
+[   52.837381] [NTRDMA] link signaling method configured
+[   52.837932] ntrdma 0000:00:03.0: ntc_ntb_link_commit: 1034: link commit - verifying both sides sync
+[   53.084093] [NTRDMA] Started ntc_ntb_link_get_event
+[   53.084307] [IDT_NTB] Peers status is 1
+[   53.084635] [NTRDMA] Started pinpong
+[   53.084787] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 7 event 8
+[   53.084872] Request dma returned 1
+[   53.084902] Link state is 7
+[   53.085101] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 0
+[   53.085224] ntrdma 0000:00:03.0: ntc_ntb_hello: 1073: hello callback phase 0 done 0
+[   53.085585] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 1
+[   53.086043] ntrdma 0000:00:03.0: ntc_ntb_hello: 1073: hello callback phase 1 done 0
+[   53.331693] [NTRDMA] Started ntc_ntb_link_get_event
+[   53.331833] [IDT_NTB] Peers status is 1
+[   53.331855] [NTRDMA] Started pinpong
+[   53.331880] Request dma returned 1
+[   53.331886] Link state is 9
+[   53.331942] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1214: ERROR: peer state is not in sync 2 9.
+[   53.331974] ntrdma 0000:00:03.0: ntc_ntb_error: 648: ERROR: link error
+[   53.331997] [NTRDMA] Started ntc_ntb_link_get_event
+[   53.332013] [IDT_NTB] Peers status is 1
+[   53.332019] [NTRDMA] Started pinpong
+[   53.332028] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 0 event 2
+[   53.332038] Request dma returned 1
+[   53.332042] Link state is 0
+[   53.332049] ntrdma 0000:00:03.0: ntc_ntb_quiesce: 683: link quiesce
+[   53.332071] ntrdma 0000:00:03.0: ntrdma_dev_cmd_quiesce: 384: cmd quiesce starting ...
+[   53.332085] ntrdma 0000:00:03.0: ntrdma_dev_cmd_quiesce: 424: cmd quiesce done
+[   53.332099] ntrdma 0000:00:03.0: ntc_ntb_reset: 796: link reset
+[   53.580058] [NTRDMA] Started ntc_ntb_link_get_event
+[   53.580249] [IDT_NTB] Peers status is 1
+[   53.580299] [NTRDMA] Started pinpong
+[   53.580397] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 2 event 3
+[   53.580821] Request dma returned 1
+[   53.580856] Link state is 2
+[   53.580924] ntrdma 0000:00:03.0: ntc_ntb_enabled: 811: checking if link is up
+[   53.581043] [IDT_NTB] Peers status is 1
+[   53.581095] ntrdma 0000:00:03.0: ntc_ntb_enabled: 815: link is up!
+[   53.581201] [IDT_NTB] Peers status is 1
+[   53.581236] ntc_ntb:set_memory_windows_on_device: logical MW0 @0x5900000 len=0x100000
+[   53.581281] ntc_ntb:set_memory_windows_on_device: ntb_mw_set_trans actual MW0 @0x5900000 len=0x100000
+[   53.581731] Link event is 3
+[   53.581810] ntrdma 0000:00:03.0: ntc_ntb_send_version: 835: link send version
+[   53.581911] [NTRDMA] Started ntc_ntb_link_get_event
+[   53.582040] [IDT_NTB] Peers status is 1
+[   53.582071] [NTRDMA] Started pinpong
+[   53.582130] Request dma returned 1
+[   53.582155] Link state is 4
+[   53.828239] [NTRDMA] Started ntc_ntb_link_get_event
+[   53.828815] [IDT_NTB] Peers status is 1
+[   53.828890] [NTRDMA] Started pinpong
+[   53.828993] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 4 event 5
+[   53.829074] Request dma returned 1
+[   53.829102] Link state is 4
+[   53.829154] ntrdma 0000:00:03.0: ntc_ntb_choose_version_and_send_addr: 900: link choose version
+[   53.829223] ntrdma 0000:00:03.0: ntc_ntb_choose_version_and_send_addr: 920: Agree on version 3
+[   53.829473] [IDT_NTB] Peers status is 1
+[   53.829772] ntc_ntb:set_memory_windows_on_device: logical MW1 @0x0 len=0x100000
+[   53.830039] ntc_ntb:set_memory_windows_on_device: ntb_mw_set_trans actual MW1 @0x0 len=0x100000
+[   53.830203] ntc_ntb:ntc_ntb_send_addr: sending to peer - dead_zone_size=0 trans_len=1048576
+[   53.830279] ntc_ntb:ntc_ntb_send_addr: sending to peer - dead_zone_size=0 trans_len=1048576
+[   53.830612] [NTRDMA] Started ntc_ntb_db_config_and_recv_addr
+[   53.830677] Request dma returned 1
+[   53.830704] [NTRDMA] After ntc_request_dma
+[   53.830730] ntc_ntb:ntc_ntb_recv_addr: mw 0 - dead_zone_size=0, trans_len=1048576
+[   53.830770] ntc_ntb:ntc_ntb_recv_addr: mw 1 - dead_zone_size=0, trans_len=1048576
+[   53.830897] ntrdma 0000:00:03.0: ntc_ntb_db_config_and_recv_addr: 1020: link signaling method configured
+[   53.830967] [NTRDMA] link signaling method configured
+[   54.076046] [NTRDMA] Started ntc_ntb_link_get_event
+[   54.076250] [IDT_NTB] Peers status is 1
+[   54.076306] [NTRDMA] Started pinpong
+[   54.076663] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 6 event 7
+[   54.076773] Request dma returned 1
+[   54.076803] Link state is 6
+[   54.076855] ntrdma 0000:00:03.0: ntc_ntb_link_commit: 1034: link commit - verifying both sides sync
+[   54.076959] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 0
+[   54.077056] ntrdma 0000:00:03.0: ntc_ntb_hello: 1073: hello callback phase 0 done 0
+[   54.324568] [NTRDMA] Started ntc_ntb_link_get_event
+[   54.324635] [IDT_NTB] Peers status is 1
+[   54.324647] [NTRDMA] Started pinpong
+[   54.324681] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 8 event 9
+[   54.324698] Request dma returned 1
+[   54.324703] Link state is 8
+[   54.324718] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 1
+[   54.324769] ntrdma 0000:00:03.0: ntc_ntb_hello: 1073: hello callback phase 1 done 0
+[   54.324789] ntrdma 0000:00:03.0: ntc_ntb_hello: 1057: link hello phase 2
+[   54.324811] ntrdma 0000:00:03.0: ntc_peer_addr: 515: ERROR: mw 1 offset 0x3543000 is beyond memory len 0x100000
+[   54.324825] ntrdma 0000:00:03.0: ntrdma_dev_vbell_enable: 134: ERROR: Failed to map peer vbell buff
+[   54.324836] ntrdma 0000:00:03.0: ntrdma_dev_hello_phase2: 235: ERROR: failed to enable vbell rc -5
+[   54.324847] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1227: ERROR: ntc_ntb_hello failed err=-5
+[   54.324857] ntrdma 0000:00:03.0: ntc_ntb_error: 648: ERROR: link error
+[   54.324874] [NTRDMA] Started ntc_ntb_link_get_event
+[   54.324896] [IDT_NTB] Peers status is 1
+[   54.324901] [NTRDMA] Started pinpong
+[   54.324910] ntrdma 0000:00:03.0: ntc_ntb_link_work: 1088: link work state 0 event 9
+[   54.324919] Request dma returned 1
+[   54.324923] Link state is 0
+[   54.324930] ntrdma 0000:00:03.0: ntc_ntb_quiesce: 683: link quiesce
+[   54.324953] ntrdma 0000:00:03.0: ntrdma_dev_cmd_quiesce: 384: cmd quiesce starting ...
+[   54.324970] ntrdma 0000:00:03.0: ntrdma_dev_cmd_quiesce: 424: cmd quiesce done
+[   54.324984] ntrdma 0000:00:03.0: ntc_ntb_reset: 796: link reset
+root@qemux86-64:~# Connection to localhost closed by remote host.
+
