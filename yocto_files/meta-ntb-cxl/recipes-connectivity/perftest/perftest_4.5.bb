@@ -12,4 +12,4 @@ SRCREV = "9411e12bad57fb36754e6f77b9ce92a7af1eb22a"
 
 S = "${WORKDIR}/git"
 
-DEPENDS = "rdma-core pciutils"
+DEPENDS = "ntrdma-rdma-core pciutils"
