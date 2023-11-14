@@ -19,6 +19,15 @@ get_vm_opts(){
 	local TELNEL_PORT=$((8000 + $1))
 	local SSH_PORT=$((7000 + $1))
 	local OPTS="-serial telnet::$TELNEL_PORT,server,nowait -net nic -net user,hostfwd=tcp::$SSH_PORT-:22"
+
+	if [ "$ARCH" = riscv64 ]; then
+		if [ "$1" = 1 ]; then
+			OPTS="$OPTS -bios $bios"
+		elif [ "$2" = 2 ]; then
+			OPTS="$OPTS -bios $bios2"
+		fi
+	fi
+
 	echo "$OPTS"
 }
 
@@ -26,16 +35,32 @@ get_vm_opts(){
 
 cd "$YOCTO_WORK_DIR"/poky/build
 
-qemu="$(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name qemu-system-x86_64 | head -n1)"
+ARCH="$NTB_CXL_ARCH"
+
+qemu="$(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name qemu-system-$ARCH | head -n1)"
 ivshmem_server="$(find ./tmp/work/x86_64-linux/qemu-system-native -type f -name ivshmem-server | head -n1)"
 
 vm1_dir=guest_1
 vm2_dir=guest_2
 
-drive=$vm1_dir/core-image-full-cmdline-qemux86-64.ext4
-kernel=$vm1_dir/bzImage
-drive2=$vm2_dir/core-image-full-cmdline-qemux86-64.ext4
-kernel2=$vm2_dir/bzImage
+drive=$vm1_dir/core-image-full-cmdline-qemu${ARCH}.ext4
+drive2=$vm2_dir/core-image-full-cmdline-qemu${ARCH}.ext4
+case "$ARCH" in
+	x86_64)
+		kernel=$vm1_dir/bzImage
+		kernel2=$vm2_dir/bzImage
+		;;
+	riscv64)
+		kernel=$vm1_dir/Image
+		kernel2=$vm2_dir/Image
+		bios=$vm1_dir/fw_jump.elf
+		bios2=$vm2_dir/fw_jump.elf
+		;;
+	*)
+		echo "error: invalid arch: $ARCH"
+		return 1
+
+esac
 
 IVSHMEM_COMMON_OPTIONS_VM1=$(get_idt_ivshmem_opts 0)
 IVSHMEM_COMMON_OPTIONS_VM2=$(get_idt_ivshmem_opts 1)
@@ -48,9 +73,18 @@ else
 	CMDLINE_COMMON="$CMDLINE_COMMON_DEFAULT $CMDLINE_COMMON"
 fi
 
-COMMON_OPTIONS_DEFAULT="-usb -device usb-tablet -usb -device usb-kbd \
-	-cpu IvyBridge -machine q35,i8042=off -smp 4 -m 256 \
-	-nographic -monitor null"
+COMMON_OPTIONS_DEFAULT="-smp 4 -m 256 -nographic -monitor null"
+case "$ARCH" in
+	x86_64)
+		COMMON_OPTIONS_DEFAULT="$COMMON_OPTIONS_DEFAULT -cpu IvyBridge -machine q35"
+		;;
+	riscv64)
+		COMMON_OPTIONS_DEFAULT="$COMMON_OPTIONS_DEFAULT -machine virt"
+		;;
+	*)
+		echo "error: invalid arch: $ARCH"
+		return 1
+esac
 
 VM1_OPTIONS_DEFAULT=$(get_vm_opts 1)
 VM2_OPTIONS_DEFAULT=$(get_vm_opts 2)

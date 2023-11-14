@@ -17,8 +17,8 @@ if [[ $BUILD_VAL == "all" || $BUILD_VAL == "image" ]]; then
     bitbake -c deploy virtual/kernel
     bitbake core-image-full-cmdline
     # Create two image copies for VMs
-    cp -ruT tmp/deploy/images/qemux86-64/ ./guest_1
-    cp -ruT tmp/deploy/images/qemux86-64/ ./guest_2
+    cp -ruT tmp/deploy/images/qemu${NTB_CXL_ARCH}/ ./guest_1
+    cp -ruT tmp/deploy/images/qemu${NTB_CXL_ARCH}/ ./guest_2
 fi
 
 if [[ $BUILD_VAL == "all" || $BUILD_VAL == "qemu" ]]; then
