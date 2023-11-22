@@ -1,0 +1,39 @@
+From 514c29bb8a705ea61bdb82f91265ac1b6b99c3f7 Mon Sep 17 00:00:00 2001
+From: AndrewGavril <gavrilov.andrew1999@yandex.ru>
+Date: Thu, 28 Sep 2023 14:38:18 +0300
+Subject: [PATCH] Removed man pages
+
+---
+ Makefile.am | 16 ----------------
+ 1 file changed, 16 deletions(-)
+
+diff --git a/Makefile.am b/Makefile.am
+index 6b12259..cd5fa55 100755
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -56,22 +56,6 @@ endif
+ bin_PROGRAMS = ib_send_bw ib_send_lat ib_write_lat ib_write_bw ib_read_lat ib_read_bw ib_atomic_lat ib_atomic_bw
+ bin_SCRIPTS = run_perftest_loopback run_perftest_multi_devices
+ 
+-# Non-source man pages:
+-man1_MANS = \
+-	man/ib_write_bw.1 \
+-	man/ib_read_bw.1 \
+-	man/ib_send_bw.1 \
+-	man/ib_atomic_bw.1 \
+-	man/ib_write_lat.1 \
+-	man/ib_read_lat.1 \
+-	man/ib_send_lat.1 \
+-	man/ib_atomic_lat.1 \
+-	man/raw_ethernet_bw.1 \
+-	man/raw_ethernet_lat.1 \
+-	man/raw_ethernet_burst_lat.1 \
+-	man/raw_ethernet_fs_rate.1 \
+-	#
+-
+ dist_man_MANS = man/perftest.1
+ 
+ generated_mans = $(man1_MANS)
+-- 
+2.25.1
+

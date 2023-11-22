@@ -4,6 +4,7 @@
  * Authors:
  * - Tinyakov Sergey
  * - Gavrilov Andrei
+ * - Maxim Karasev
  *
  * Based On: ivshmem.c
  *          Copyright (c) 20?? Cam Macdonell <cam@cs.ualberta.ca>
@@ -30,6 +31,7 @@
 #include "chardev/char-fe.h"
 #include "sysemu/hostmem.h"
 #include "qapi/visitor.h"
+#include "qemu/atomic.h"
 
 #include "hw/misc/ivshmem.h"
 #include "qom/object.h"
@@ -41,7 +43,10 @@
 #define IVSHMEM_IOEVENTFD   0
 #define IVSHMEM_MSI     1
 
-#define IVSHMEM_REG_BAR_SIZE 0x1000
+#define IVSHMEM_REG_BAR_SIZE 0x2000
+
+#define IDT_BAR_APERTURE_POWER 20
+#define IDT_BAR_APERTURE_SIZE (1U << IDT_BAR_APERTURE_POWER) /* 256MiB */
 
 #define IVSHMEM_DEBUG 1
 #define IVSHMEM_DPRINTF(fmt, ...)                       \
@@ -57,6 +62,39 @@ typedef struct IVShmemState IVShmemState;
 DECLARE_INSTANCE_CHECKER(IVShmemState, IVSHMEM_NTB_IDT,
                          TYPE_IVSHMEM_NTB_IDT)
 
+
+#define SWITCH_CASE_READ_BARSETUP(vmidx, portidx, baridx) case IDT_SW_NTP ## portidx ## _BARSETUP ## baridx: \
+            ret = shm_storage->vm ## vmidx .bar_config[baridx].setup; \
+            IVSHMEM_DPRINTF("GAS: Read the NTP%d_BARSETUP%d from GAS: 0x%lx\n", portidx, baridx, ret); \
+            break;
+#define SWITCH_CASE_READ_BARSETUPS(vmidx, portidx) SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 0) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 1) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 2) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 3) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 4) \
+            SWITCH_CASE_READ_BARSETUP(vmidx, portidx, 5)
+
+#define SWITCH_CASE_WRITE_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
+            s->bar_config[ind].fld = (uint32_t)val; \
+            IVSHMEM_DPRINTF("Set the local %s%d to value 0x%x\n", #reg, ind, (uint32_t)val); \
+            break;
+#define SWITCH_CASE_WRITE_BARREGS(reg, fld) SWITCH_CASE_WRITE_BARREG(reg, fld, 0) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 1) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 2) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 3) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 4) \
+            SWITCH_CASE_WRITE_BARREG(reg, fld, 5)
+
+#define SWITCH_CASE_INMSG_READ(ind) case IDT_NT_INMSG ## ind: \
+            ret = s->regs->msg[ind]; \
+            IVSHMEM_DPRINTF("[Host %d] Read value 0x%lx from the inbound message register %d\n", s->self_number, ret, ind); \
+            break;
+
+#define SWITCH_CASE_INMSGSRC_READ(ind) case IDT_NT_INMSGSRC ## ind: \
+            ret = s->regs->inb_msg_src[ind]; \
+            IVSHMEM_DPRINTF("[Host %d] Read value 0x%lx from the inbound src message register %d\n", s->self_number, ret, ind); \
+            break;
+
 typedef struct Peer {
     int nb_eventfds;
     EventNotifier *eventfds;
@@ -67,6 +105,45 @@ typedef struct MSIVector {
     int virq;
     bool unmasked;
 } MSIVector;
+
+typedef struct BARConfig {
+    uint32_t setup;
+    uint32_t limit;
+    uint32_t ltbase;
+    uint32_t utbase;
+} BARConfig;
+
+#pragma pack(push, 1)
+typedef struct idt_global_registers {
+    uint32_t segsigsts;
+    uint32_t segsigmsk;
+    uint32_t nt_int_mask;
+    uint32_t ntmtbl0; /* NT Mapping Table */
+} idt_global_registers;
+
+typedef struct idt_shared_registers {
+    uint32_t db; /* Inbound doorbell (outbound from the peer's view) (related to patrition 0?) */
+    uint32_t db_mask; /* Inbound doorbell interrupt mask */
+    uint32_t inbound_mw_part;
+    uint64_t ntctl;
+
+    uint64_t msgsts; /* Inbound/outbound messages status */
+    uint64_t msgsts_mask; /* Message status interrupt mask */
+    uint64_t msg[4]; /* Inbound messages (outbound from the peer's view) */
+
+    uint64_t intsts; /* Which interrupt we just received? */
+
+    /* Currently only first value is used */
+    uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
+    uint64_t inb_msg_src[4];  /* Source partition for inbound registers */
+} idt_shared_registers;
+#pragma pack(pop)
+
+typedef struct idt_local_registers {
+    uint64_t gasaaddr;
+    uint64_t nt_mtb_addr;
+    uint32_t inbound_mw_bar;
+} idt_local_registers;
 
 struct IVShmemState {
     /*< private >*/
@@ -79,10 +156,12 @@ struct IVShmemState {
     HostMemoryBackend *hostmem; /* with interrupts */
     CharBackend server_chr; /* without interrupts */
 
-    /* BARs */
-    MemoryRegion ivshmem_mmio;  /* BAR 0 (registers) */
+    /* ivshmem-specific BARs */
     MemoryRegion *ivshmem_bar2; /* BAR 2 (shared memory) */
     MemoryRegion server_bar2;   /* used with server_chr */
+
+    /* IDT device BARs */
+    MemoryRegion bars[6]; /* BAR 0 maps configuration space, others are general purpose */
 
     /* interrupt support */
     Peer *peers;
@@ -96,98 +175,223 @@ struct IVShmemState {
     OnOffAuto master;
     Error *migration_blocker;
 
-    /* Fields for IDT */
-    uint64_t gasaaddr;
-    uint64_t nt_mtb_addr;
-    /* Currently only first value is used */
-    uint64_t part0_msg_control[4];  /* Control for inbound and outbound messages */
-    uint64_t *inbound;  /* Inbound messages */
-    uint64_t *outbound;  /* Outbound messages */
-    /* Not implemented */
-    /* uint8_t srcbound[4]; */  /* Src partition of messages */
-    uint32_t *db_inbound;  /* Inbound doorbell (related to patrition 0?) */
-    uint32_t db_inbound_mask; /* Inbould doorbell mask */
-    uint32_t *db_outbound;  /* Outbound doorbell (related to partition 0?) */
-
     /* IDT interconnect */
     uint32_t self_number;
     int vm_id;
     int other_vm_id;
+
+    /* Not related to IDT device directly */
     uint32_t *vm_id_shared;
     uint32_t *other_vm_id_shared;
+
+    /* Registers that are writeable from peer QEMU instance */
+    idt_shared_registers *regs;
+
+    /* Registers that don't need to be accessed from peer QEMU instance */
+    idt_local_registers lregs;
+
+    /* Peer's shared registers */
+    idt_shared_registers *peer_regs;
+
+    /* Global switch registers */
+    idt_global_registers *gregs;
+
+    /* BAR states */
+    BARConfig *bar_config;
+
+    /* Peer's BAR states. For OUT-OF-SPECIFICATION */
+    BARConfig *peer_bar_config;
+
+    /* Peer physical memory */
+    void *peer_mem;
 };
 
-enum idt_registers {
+enum idt_global_config_registers {
+    /* Port 0 */
+    IDT_SW_NTP0_PCIECMDSTS = 0x1004U,
+    IDT_SW_NTP0_NTCTL      = 0x1400U,
+
+    IDT_SW_NTP0_BARSETUP0  = 0x1470U,
+    IDT_SW_NTP0_BARSETUP1  = 0x1480U,
+    IDT_SW_NTP0_BARSETUP2  = 0x1490U,
+    IDT_SW_NTP0_BARSETUP3  = 0x14A0U,
+    IDT_SW_NTP0_BARSETUP4  = 0x14B0U,
+    IDT_SW_NTP0_BARSETUP5  = 0x14C0U,
+
+    IDT_SW_SWPORT0STS      = 0x3E204U,
+
+    /* Port 2 */
     IDT_SW_NTP2_PCIECMDSTS = 0x5004U,
     IDT_SW_NTP2_NTCTL      = 0x5400U,
-    IDT_SW_SWPART0STS      = 0x3E104U,
-    IDT_SW_SWPORT0STS      = 0x3E204U,
+
+    IDT_SW_NTP2_BARSETUP0  = 0x5470U,
+    IDT_SW_NTP2_BARSETUP1  = 0x5480U,
+    IDT_SW_NTP2_BARSETUP2  = 0x5490U,
+    IDT_SW_NTP2_BARSETUP3  = 0x54A0U,
+    IDT_SW_NTP2_BARSETUP4  = 0x54B0U,
+    IDT_SW_NTP2_BARSETUP5  = 0x54C0U,
+
     IDT_SW_SWPORT2STS      = 0x3E244U,
+
+    /* Partition 0 */
+    IDT_SW_SWPART0STS      = 0x3E104U,
     IDT_SW_SWP0MSGCTL0     = 0x3EE00U,
+    IDT_SW_SWP0MSGCTL1     = 0x3EE20U,
+    IDT_SW_SWP0MSGCTL2     = 0x3EE40U,
+    IDT_SW_SWP0MSGCTL3     = 0x3EE60U,
+    /* Switch event registers */
+    IDT_SW_SESTS           = 0x3EC00U,
+    IDT_SW_SELINKUPSTS     = 0x3EC0CU,
+    IDT_SW_SELINKDNSTS     = 0x3EC14U,
+    IDT_SW_SEGSIGSTS       = 0x3EC30U,
+    IDT_SW_SEGSIGMSK       = 0x3EC34U,
+
+    /* Global interrupt mask */
+    IDT_NT_NTINTMSK        = 0x00408U
 };
 
-enum idt_registers_values {
+enum idt_register_values {
     VALUE_SWPORT0STS = (0x1U << 4) | /* Link up, data link layer is 'DL_up' */ \
-                       (0x3U << 6) | /* Partition is 0x0 */ \
-                       (0x0U << 10),  /* NT Function is enabled */
+                       (0x8U << 6) | /* NT Function with DMA is enabled */ \
+                       (0x0U << 10),  /* Partition is 0x0 */
     VALUE_SWPORT2STS = VALUE_SWPORT0STS,
     VALUE_SWPART0STS = (0x1U << 5), /* Partition is enabled */
-    VALUE_NTP2_PCIECMDSTS = (0x1U << 2), /* Bus Master is enabled */
-    VALUE_NTP2_NTCTL = (0x1 << 1), /* Completion is enabled (CPEN flag) */
+    VALUE_NTP0_PCIECMDSTS = (0x1U << 2), /* Bus Master is enabled */
+    VALUE_NTP2_PCIECMDSTS = VALUE_NTP0_PCIECMDSTS,
+};
+
+enum idt_default_register_values {
+    VALUE_NTP0_NTCTL = (0x0 << 1), /* Completion is disabled on start up (CPEN flag) */
+    VALUE_NTP2_NTCTL = VALUE_NTP0_NTCTL,
 };
 
 enum idt_config_registers {
     IDT_NT_PCICMDSTS   = 0x4U,
     IDT_NT_PCIELCAP    = 0x4CU,
+    IDT_NT_PCIELCTLSTS = 0x50U,
     IDT_NT_NTCTL       = 0x400U,
     IDT_NT_NTINTSTS    = 0x404U,
+    IDT_NT_NTGSIGNAL   = 0x410U,
     IDT_NT_OUTDBELLSET = 0x420U,
     IDT_NT_INDBELLSTS  = 0x428U,
     IDT_NT_INDBELLMSK  = 0x42CU,
     IDT_NT_OUTMSG0     = 0x430U,
+    IDT_NT_OUTMSG1     = 0x434U,
+    IDT_NT_OUTMSG2     = 0x438U,
+    IDT_NT_OUTMSG3     = 0x43CU,
     IDT_NT_INMSG0      = 0x440U,
+    IDT_NT_INMSG1      = 0x444U,
+    IDT_NT_INMSG2      = 0x448U,
+    IDT_NT_INMSG3      = 0x44CU,
+    IDT_NT_MSGSTS      = 0x460U,
+    IDT_NT_MSGSTSMSK   = 0x464U,
     IDT_NT_NTMTBLADDR  = 0x4D0U,
     IDT_NT_NTMTBLDATA  = 0x4D8U,
+    IDT_NT_REQIDCAP    = 0x4DCU,
     GASAADDR           = 0xFF8U,
     GASADATA           = 0xFFCU,
+
+    /* Inbound Message Source */
+    IDT_NT_INMSGSRC0   = 0x00450U,
+    IDT_NT_INMSGSRC1   = 0x00454U,
+    IDT_NT_INMSGSRC2   = 0x00458U,
+    IDT_NT_INMSGSRC3   = 0x0045CU,
+
+    IDT_NT_BARSETUP0  = 0x470U,
+    IDT_NT_BARLIMIT0  = 0x474U,
+    IDT_NT_BARLTBASE0 = 0x478U,
+    IDT_NT_BARUTBASE0 = 0x47CU,
+    IDT_NT_BARSETUP1  = 0x480U,
+    IDT_NT_BARLIMIT1  = 0x484U,
+    IDT_NT_BARLTBASE1 = 0x488U,
+    IDT_NT_BARUTBASE1 = 0x48CU,
+    IDT_NT_BARSETUP2  = 0x490U,
+    IDT_NT_BARLIMIT2  = 0x494U,
+    IDT_NT_BARLTBASE2 = 0x498U,
+    IDT_NT_BARUTBASE2 = 0x49CU,
+    IDT_NT_BARSETUP3  = 0x4A0U,
+    IDT_NT_BARLIMIT3  = 0x4A4U,
+    IDT_NT_BARLTBASE3 = 0x4A8U,
+    IDT_NT_BARUTBASE3 = 0x4ACU,
+    IDT_NT_BARSETUP4  = 0x4B0U,
+    IDT_NT_BARLIMIT4  = 0x4B4U,
+    IDT_NT_BARLTBASE4 = 0x4B8U,
+    IDT_NT_BARUTBASE4 = 0x4BCU,
+    IDT_NT_BARSETUP5  = 0x4C0U,
+    IDT_NT_BARLIMIT5  = 0x4C4U,
+    IDT_NT_BARLTBASE5 = 0x4C8U,
+    IDT_NT_BARUTBASE5 = 0x4CCU,
+    /* Out of specification */
+    IDT_OOF_TPART     = 0x1000U,
+    IDT_OOF_LUTOFF    = 0x1004U,
+    IDT_OOF_LDATA     = 0x1008U,
+    IDT_OOF_HDATA     = 0x100CU,
+    IDT_OOF_LLIMIT    = 0x1010U,
+    IDT_OOF_HLIMIT    = 0x1014U,
+};
+
+enum msgsts_fields {
+    IDT_FLD_OUTMSGSTS0 = 0,
+    IDT_FLD_OUTMSGSTS1,
+    IDT_FLD_OUTMSGSTS2,
+    IDT_FLD_OUTMSGSTS3,
+    IDT_FLD_INMSGSTS0 = 16,
+    IDT_FLD_INMSGSTS1,
+    IDT_FLD_INMSGSTS2,
+    IDT_FLD_INMSGSTS3,
+};
+
+enum barsetup_fields {
+    IDT_FLD_BARSETUP_TYPE = 1,
+    IDT_FLD_BARSETUP_SIZE = 4,
+    IDT_FLD_BARSETUP_MODE = 10,
+    IDT_FLD_BARSETUP_ENABLE = 31,
 };
 
 enum idt_config_registers_values {
-    VALUE_NT_PCIELCAP = (0x0U << 24), /* Local port number is 0x0 */
+    VALUE_NT_PCIELCAP_VM1 = (0x0U << 24), /* Local port number is 0x0 */
+    VALUE_NT_PCIELCAP_VM2 = (0x2U << 24),
+    VALUE_NT_PCIELCTLSTS = (0x1U << 16) | (0b100U << 20), /* Let it be a 4-lane gen1 */
     VALUE_NT_PCICMDSTS = (0x1U << 2), /* Bus Master is enabled */
-    VALUE_NT_NTCTL = (0x1U << 1), /* Completion is enabled (CPEN flag) */
-    VALUE_NT_NTINTSTS = (0x1U << 1),  /* Doorbell interrupt */
 };
 
-enum idt_pci_config_registers {
-    IDT_NT_BARSETUP0 = 0x470U,
-};
+enum idt_default_config_register_values {
+    VALUE_NT_BARSETUP0 = (0x0U << IDT_FLD_BARSETUP_TYPE) | /* 32-bit addressing */ \
+                         (0xCU << IDT_FLD_BARSETUP_SIZE) | /* Address Space Size = 4 KiB */ \
+                         (0x1U << IDT_FLD_BARSETUP_MODE) | /* This BAR isn't a window (NT Configuration Space) */ \
+                         (0x1U << IDT_FLD_BARSETUP_ENABLE), /* This BAR is enabled */
 
-enum idt_pci_config_registers_value {
-    VALUE_NT_BARSETUP0 = (0x0U << 1) | /* TODO: What is it? */ \
-                         (0xCU << 4) | /* TODO: What is it? */ \
-                         (0x1U << 10) | /* TODO: What is it? */ \
-                         (0x1U << 31), /* TODO: What is it? */
+    VALUE_NT_BARSETUP2 = (IDT_BAR_APERTURE_POWER << IDT_FLD_BARSETUP_SIZE) |
+                         (0x1U << IDT_FLD_BARSETUP_ENABLE),
+    VALUE_NT_BARSETUP3 = VALUE_NT_BARSETUP2,
+    VALUE_NT_BARSETUP4 = VALUE_NT_BARSETUP2,
+    VALUE_NT_BARSETUP5 = VALUE_NT_BARSETUP2,
 };
 
 enum idt_ivshmem_eventfds {
     EVENTFD_VM_ID = 0,
-    EVENTFD_DBELL,
-    EVENTFD_MSG,
+    EVENTFD_INTERRUPT_HOST,
 };
 
 #pragma pack(push, 1)
 struct idt_ivshmem_vm_shm_storage {
     uint32_t id;
-    uint32_t db;
-    uint64_t msg[4];
+    idt_shared_registers regs;
+    BARConfig bar_config[6];
 };
 
 struct idt_ivshmem_shm_storage {
+    struct idt_global_registers gregs;
     struct idt_ivshmem_vm_shm_storage vm1;
     struct idt_ivshmem_vm_shm_storage vm2;
 };
 #pragma pack(pop)
+
+enum idt_interrupts {
+    IDT_NTINTSTS_MSG = 0x1U,
+    IDT_NTINTSTS_DBELL = 0x2U,
+    IDT_NTINTSTS_SEVENT = 0x8U,
+};
 
 static inline uint32_t ivshmem_has_feature(IVShmemState *ivs, unsigned int feature)
 {
@@ -214,27 +418,95 @@ static void interrupt_notify(IVShmemState *s, unsigned int vector)
     /* msix_notify(pdev, vector); */
 }
 
+static void write_outbound_msg(IVShmemState *s, int index, uint64_t val)
+{
+    if ((index < 0) || (index > 3))
+    {
+        error_report("idt-ntb-ivshmem: invalid msg register index");
+        return;
+    }
+
+    if (s->peer_regs->msgsts & (0x1U << (IDT_FLD_INMSGSTS0 + index)))
+    {
+        IVSHMEM_DPRINTF("Refusing to write to msg register, INMSGSTS%d is non-zero (vm%d 0x%lx)\n",
+                index, s->vm_id, s->peer_regs->msgsts);
+        s->regs->msgsts |= (0x1U << (IDT_FLD_OUTMSGSTS0 + index)); /* Set the error status */
+
+        if ((s->regs->msgsts_mask & ~(0x1U << (IDT_FLD_OUTMSGSTS0 + index))) &&
+                (~s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
+        {
+            s->regs->intsts |= IDT_NTINTSTS_MSG;
+            interrupt_notify(s, 0);
+            IVSHMEM_DPRINTF("Notified host about message transmission failure (vm%d)\n", s->vm_id);
+        }
+
+        return;
+    }
+
+    s->peer_regs->msg[index] = val;
+    IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register %d\n", val, index);
+
+    if (s->other_vm_id != -1)
+    {
+        s->peer_regs->msgsts |= (0x1U << (IDT_FLD_INMSGSTS0 + index));
+        s->peer_regs->inb_msg_src[index] = s->regs->inbound_mw_part;
+
+        if ((~s->peer_regs->msgsts_mask & (0x1U << (IDT_FLD_INMSGSTS0 + index))) &&
+                (~s->gregs->nt_int_mask & IDT_NTINTSTS_MSG))
+        {
+            s->peer_regs->intsts |= IDT_NTINTSTS_MSG;
+            event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+            IVSHMEM_DPRINTF("Sent message register update notification (vm%d -> vm%d)\n",
+                    s->vm_id, s->other_vm_id);
+        }
+    }
+}
+
 static uint64_t get_gasadata(IVShmemState *s)
 {
     uint64_t ret;
-    switch (s->gasaaddr){
+    struct idt_ivshmem_shm_storage *shm_storage =
+        (struct idt_ivshmem_shm_storage *)memory_region_get_ram_ptr(s->ivshmem_bar2);
+
+    switch (s->lregs.gasaaddr) {
         case IDT_SW_SWPORT0STS:
             ret = VALUE_SWPORT0STS;
+            IVSHMEM_DPRINTF("GAS: Read switch port 0 status: 0x%lx\n", ret);
             break;
         case IDT_SW_SWPORT2STS:
             ret = VALUE_SWPORT2STS;
+            IVSHMEM_DPRINTF("GAS: Read switch port 2 status: 0x%lx\n", ret);
             break;
         case IDT_SW_SWPART0STS:
             ret = VALUE_SWPART0STS;
+            IVSHMEM_DPRINTF("GAS: Read switch partition 0 status: 0x%lx\n", ret);
+            break;
+        case IDT_SW_NTP0_PCIECMDSTS:
+            ret = VALUE_NTP0_PCIECMDSTS;
+            IVSHMEM_DPRINTF("GAS: Read switch port 0 PCIECMDSTS: 0x%lx\n", ret);
+            break;
+        case IDT_SW_NTP0_NTCTL:
+            ret = shm_storage->vm1.regs.ntctl;
+            IVSHMEM_DPRINTF("GAS: Read switch port 0 NTCTL: 0x%lx\n", ret);
             break;
         case IDT_SW_NTP2_PCIECMDSTS:
+            IVSHMEM_DPRINTF("GAS: Read switch port 2 PCIECMDSTS: 0x%lx\n", ret);
             ret = VALUE_NTP2_PCIECMDSTS;
             break;
         case IDT_SW_NTP2_NTCTL:
-            ret = VALUE_NTP2_NTCTL;
+            ret = shm_storage->vm2.regs.ntctl;
+            IVSHMEM_DPRINTF("GAS: Read switch port 2 NTCTL: 0x%lx\n", ret);
             break;
+        case IDT_SW_SESTS:
+            ret = 0ULL;
+            IVSHMEM_DPRINTF("GAS: Stub read of SESTS (not used by Linux driver)\n");
+            break;
+
+        SWITCH_CASE_READ_BARSETUPS(1, 0)
+        SWITCH_CASE_READ_BARSETUPS(2, 2)
+
         default:
-            IVSHMEM_DPRINTF("Not implemented gasadata read on reg 0x%lx\n", s->gasaaddr);
+            IVSHMEM_DPRINTF("GAS: Not implemented gasadata read on reg 0x%lx\n", s->lregs.gasaaddr);
             ret = 0;
     }
     return ret;
@@ -242,28 +514,66 @@ static uint64_t get_gasadata(IVShmemState *s)
 
 static void write_gasadata(IVShmemState *s, uint64_t val)
 {
-    switch (s->gasaaddr){
+    switch (s->lregs.gasaaddr){
         case IDT_SW_SWP0MSGCTL0:
-            s->part0_msg_control[0] = val;
+            s->regs->part0_msg_control[0] = val;
+            IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL0: 0x%lx\n", val);
+            break;
+        case IDT_SW_SWP0MSGCTL1:
+            s->regs->part0_msg_control[1] = val;
+            IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL1: 0x%lx\n", val);
+            break;
+        case IDT_SW_SWP0MSGCTL2:
+            s->regs->part0_msg_control[2] = val;
+            IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL2: 0x%lx\n", val);
+            break;
+        case IDT_SW_SWP0MSGCTL3:
+            s->regs->part0_msg_control[3] = val;
+            IVSHMEM_DPRINTF("GAS: Set global SWP0MSGCTL3: 0x%lx\n", val);
+            break;
+        case IDT_SW_SEGSIGSTS:
+            s->gregs->segsigsts &= ~val; /* Substraction with a module of 2 */
+            IVSHMEM_DPRINTF("GAS: Cleared the SEGSIGSTS, new value: 0x%x (vm%d)\n",
+                    s->gregs->segsigsts, s->vm_id);
+            break;
+        case IDT_SW_SELINKDNSTS:
+            // TODO: switch event?
+            IVSHMEM_DPRINTF("GAS: Stub SELINKDNSTS write (not used in Linux driver)\n");
+            break;
+        case IDT_SW_SELINKUPSTS:
+            // TODO: switch event?
+            IVSHMEM_DPRINTF("GAS: Stub SELINKUPSTS write (not used in Linux driver)\n");
             break;
         default:
-            IVSHMEM_DPRINTF("Not implemented gasadata write on reg 0x%lx\n", s->gasaaddr);
+            IVSHMEM_DPRINTF("GAS: Not implemented gasadata write on reg 0x%lx\n", s->lregs.gasaaddr);
     }
 }
 
 static uint64_t get_nt_mtb_data(IVShmemState *s)
 {
     uint64_t ret;
-    switch (s->nt_mtb_addr){
-        case 0x0U:  // Partion 0
-            ret = 0;
-            ret |= 0x1;  // Set VALID field
+    switch (s->lregs.nt_mtb_addr){
+        case 0x0U: /* Partion 0 */
+            ret = s->gregs->ntmtbl0;
+            IVSHMEM_DPRINTF("[Host %d] MTB: Read partition 0 MTB data: 0x%lx\n", s->self_number, ret);
             break;
         default:
-            IVSHMEM_DPRINTF("Not implemented nt_mtb_addr on value 0x%lx\n", s->nt_mtb_addr);
+            IVSHMEM_DPRINTF("MTB: Not implemented read on addr 0x%lx\n", s->lregs.nt_mtb_addr);
             ret = 0;
     }
     return ret;
+}
+
+static void set_nt_mtb_data(IVShmemState *s, uint32_t val)
+{
+    switch (s->lregs.nt_mtb_addr){
+        case 0x0U: /* Partion 0 */
+            s->gregs->ntmtbl0 = val;
+            IVSHMEM_DPRINTF("[Host %d] MTB: Set partition 0 MTB data: 0x%x\n", s->self_number, val);
+            break;
+        default:
+            IVSHMEM_DPRINTF("MTB: Not implemented write on addr 0x%lx\n", s->lregs.nt_mtb_addr);
+    }
 }
 
 /*
@@ -290,47 +600,129 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 {
     IVShmemState *s = opaque;
 
-    IVSHMEM_DPRINTF("Writing to addr " HWADDR_FMT_plx " value 0x%lx\n", addr, val);
     switch (addr) {
         case GASAADDR:
-            s->gasaaddr = val;
+            s->lregs.gasaaddr = val;
+            IVSHMEM_DPRINTF("Set GASAADDR: 0x%lx\n", val);
             break;
         case GASADATA:
+            IVSHMEM_DPRINTF("Handling GASADATA write: 0x%lx\n", val);
             write_gasadata(s, val);
             break;
+        case IDT_NT_NTCTL:
+            s->regs->ntctl = val;
+            IVSHMEM_DPRINTF("Set local NTCTL: 0x%lx\n", val);
+            break;
         case IDT_NT_NTMTBLADDR:
-            s->nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
+            s->lregs.nt_mtb_addr = val & (0x7FU);  // Set partion number to interact with mapping table (First six bits)
+            IVSHMEM_DPRINTF("[Host %d] Set NTMTBLADDR: 0x%lx\n", s->self_number, s->lregs.nt_mtb_addr);
+            break;
+        case IDT_NT_NTMTBLDATA:
+            set_nt_mtb_data(s, val);
+            IVSHMEM_DPRINTF("[Host %d] Handled NTMTBLDATA write: 0x%lx\n", s->self_number, val);
+            break;
+        case IDT_NT_NTINTSTS: /* interrupt status */
+            s->regs->intsts &= ~val;
+            IVSHMEM_DPRINTF("Cleared the local NTINTSTS: 0x%lx\n", s->regs->intsts);
             break;
         case IDT_NT_OUTMSG0:
-            s->outbound[0] = val;
-            IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound message register 0\n", val);
-
-            if (s->other_vm_id != -1)
-            {
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_MSG]);
-                IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
-            }
+            IVSHMEM_DPRINTF("Handling write to OUTMSG0: 0x%lx\n", val);
+            write_outbound_msg(s, 0, val);
+            break;
+        case IDT_NT_OUTMSG1:
+            IVSHMEM_DPRINTF("Handling write to OUTMSG1: 0x%lx\n", val);
+            write_outbound_msg(s, 1, val);
+            break;
+        case IDT_NT_OUTMSG2:
+            IVSHMEM_DPRINTF("Handling write to OUTMSG2: 0x%lx\n", val);
+            write_outbound_msg(s, 2, val);
+            break;
+        case IDT_NT_OUTMSG3:
+            IVSHMEM_DPRINTF("Handling write to OUTMSG3: 0x%lx\n", val);
+            write_outbound_msg(s, 3, val);
             break;
         case IDT_NT_OUTDBELLSET:
-            *s->db_outbound = val;
+            s->peer_regs->db = val;
             IVSHMEM_DPRINTF("Wrote value 0x%lx to the outbound doorbell\n", val);
 
             if (s->other_vm_id != -1)
             {
-                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_DBELL]);
-                IVSHMEM_DPRINTF("Sent interrupt msg from %d to %d\n", s->vm_id, s->other_vm_id);
+                if (~s->gregs->nt_int_mask & IDT_NTINTSTS_DBELL) {
+                    s->peer_regs->intsts |= IDT_NTINTSTS_DBELL;
+                    event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+                    IVSHMEM_DPRINTF("Sent doorbell register update notification (vm%d -> vm%d)\n",
+                            s->vm_id, s->other_vm_id);
+                }
             }
             break;
         case IDT_NT_INDBELLSTS:
-            *s->db_inbound = val;
-            IVSHMEM_DPRINTF("Wrote value 0x%lx to the inbound doorbell\n", val);
+            s->regs->db &= ~val; /* Substraction with a module of 2 */
+            IVSHMEM_DPRINTF("Cleared the inbound doorbell, new value: 0x%x\n", s->regs->db);
             break;
         case IDT_NT_INDBELLMSK:
-            s->db_inbound_mask = val;
+            s->regs->db_mask = val;
             IVSHMEM_DPRINTF("Set the inbound doorbell mask to value 0x%lx\n", val);
             break;
+        case IDT_NT_MSGSTS:
+            s->regs->msgsts &= ~val; /* Substraction with a module of 2 */
+            IVSHMEM_DPRINTF("Cleared the local MSGSTS, new value: 0x%lx (vm%d)\n",
+                    s->regs->msgsts, s->vm_id);
+            break;
+        case IDT_NT_MSGSTSMSK:
+            s->regs->msgsts_mask = val;
+            IVSHMEM_DPRINTF("Set the local MSGSTSMSK to value 0x%lx\n", val);
+            break;
+        case IDT_NT_NTGSIGNAL:
+            assert(val == 1ULL); /* Constrained by device spec */
+            s->gregs->segsigsts |= (1UL << 0); /* Assume partition 0 */
+            IVSHMEM_DPRINTF("Write to NTSIGNAL: set flag in SEGSIGSTS\n");
+            /* TODO: honor SEGSIGMSK */
+            if (~s->gregs->nt_int_mask & IDT_NTINTSTS_SEVENT) {
+                s->peer_regs->intsts |= IDT_NTINTSTS_SEVENT;
+                event_notifier_set(&s->peers[s->other_vm_id].eventfds[EVENTFD_INTERRUPT_HOST]);
+                IVSHMEM_DPRINTF("Notified the peer about SEGSIGSTS update (vm%d -> vm%d)\n",
+                        s->vm_id, s->other_vm_id);
+            }
+            break;
+
+        SWITCH_CASE_WRITE_BARREGS(BARSETUP, setup)
+        SWITCH_CASE_WRITE_BARREGS(BARLIMIT, limit)
+        SWITCH_CASE_WRITE_BARREGS(BARLTBASE, ltbase)
+        SWITCH_CASE_WRITE_BARREGS(BARUTBASE, utbase)
+
+        case IDT_OOF_TPART:
+            s->regs->inbound_mw_part = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the partion for the inbound_mw: 0x%lx\n", val);
+            break;
+
+        case IDT_OOF_LUTOFF:
+            s->lregs.inbound_mw_bar = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the BAR for the inbound_mw: 0x%lx\n", val);
+            break;
+
+        case IDT_OOF_LDATA:
+            s->peer_bar_config[s->lregs.inbound_mw_bar].ltbase = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the ltbase in BAR%u of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            break;
+
+        case IDT_OOF_HDATA:
+            s->peer_bar_config[s->lregs.inbound_mw_bar].utbase = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the utbase in BAR%u of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            break;
+
+        case IDT_OOF_LLIMIT:
+        case IDT_OOF_HLIMIT:
+            s->peer_bar_config[s->lregs.inbound_mw_bar].limit = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set the limit in BAR%u of the peer to 0x%lx\n", s->lregs.inbound_mw_bar, val);
+            IVSHMEM_DPRINTF("[Host %d] Addr of peer_bar_config: 0x%p. Addr of local bar_config: 0x%p\n",
+                    s->self_number, (void*)s->peer_bar_config, (void*)s->bar_config);
+            break;
+        case IDT_NT_NTINTMSK:
+            s->gregs->nt_int_mask = (uint32_t)val;
+            IVSHMEM_DPRINTF("Set global interrupt mask to: 0x%lx\n", val);
+            break;
         default:
-            IVSHMEM_DPRINTF("Invalid addr " HWADDR_FMT_plx  " for config space\n", addr);
+            IVSHMEM_DPRINTF("Invalid write at addr " HWADDR_FMT_plx  " for config space\n", addr);
     }
 }
 
@@ -345,40 +737,90 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
     {
         case GASADATA:
             ret = get_gasadata(s);
+            IVSHMEM_DPRINTF("Handled GASADATA read: 0x%lx\n", ret);
             break;
         case IDT_NT_PCIELCAP:
-            ret = VALUE_NT_PCIELCAP;
+            ret = (s->self_number == 0 ? VALUE_NT_PCIELCAP_VM1 : VALUE_NT_PCIELCAP_VM2);
+            IVSHMEM_DPRINTF("Read PCIELCAP: 0x%lx\n", ret);
+            break;
+        case IDT_NT_PCIELCTLSTS:
+            ret = VALUE_NT_PCIELCTLSTS;
+            IVSHMEM_DPRINTF("Read PCIELCTLSTS: 0x%lx\n", ret);
             break;
         case IDT_NT_PCICMDSTS:
             ret = VALUE_NT_PCICMDSTS;
+            IVSHMEM_DPRINTF("Read PCICMDSTS: 0x%lx\n", ret);
             break;
         case IDT_NT_NTCTL:
-            ret = VALUE_NT_NTCTL;
+            ret = s->regs->ntctl;
+            IVSHMEM_DPRINTF("Read local NTCTL: 0x%lx\n", ret);
             break;
         case IDT_NT_NTMTBLDATA:
             ret = get_nt_mtb_data(s);
+            IVSHMEM_DPRINTF("[Host %d] Handled NTMTBLDATA read: 0x%lx\n", s->self_number, ret);
             break;
-        case IDT_NT_NTINTSTS:  /* used when handling interrupts */
-            ret = VALUE_NT_NTINTSTS;
+        case IDT_NT_NTINTSTS: /* interrupt status */
+            ret = s->regs->intsts;
+            IVSHMEM_DPRINTF("Read local NTINTSTS: 0x%lx\n", ret);
             break;
-        case IDT_NT_INMSG0:
-            IVSHMEM_DPRINTF("Read value 0x%lx from the inbound message register\n", s->inbound[0]);
-            ret = s->inbound[0];
-            break;
+
+        SWITCH_CASE_INMSG_READ(0)
+        SWITCH_CASE_INMSG_READ(1)
+        SWITCH_CASE_INMSG_READ(2)
+        SWITCH_CASE_INMSG_READ(3)
+        SWITCH_CASE_INMSGSRC_READ(0)
+        SWITCH_CASE_INMSGSRC_READ(1)
+        SWITCH_CASE_INMSGSRC_READ(2)
+        SWITCH_CASE_INMSGSRC_READ(3)
+
         case IDT_NT_INDBELLSTS:
-            IVSHMEM_DPRINTF("Read value 0x%x from the inbound doorbell register\n", *s->db_inbound);
-            ret = *s->db_inbound;
+            ret = s->regs->db;
+            IVSHMEM_DPRINTF("Read the inbound doorbell: 0x%lx\n", ret);
             break;
         case IDT_NT_INDBELLMSK:
-            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%x\n", s->db_inbound_mask);
-            ret = s->db_inbound_mask;
+            ret = s->regs->db_mask;
+            IVSHMEM_DPRINTF("Read the inbound doorbell mask: 0x%lx\n", ret);
             break;
-            default:
-                IVSHMEM_DPRINTF("Why are we reading " HWADDR_FMT_plx "\n", addr);
-                ret = 0;
+        case IDT_NT_MSGSTS:
+            ret = s->regs->msgsts;
+            IVSHMEM_DPRINTF("Read the local MSGSTS: 0x%lx\n", ret);
+            break;
+        case IDT_NT_MSGSTSMSK:
+            ret = s->regs->msgsts_mask;
+            IVSHMEM_DPRINTF("Read the local MSGSTSMSK: 0x%lx\n", ret);
+            break;
+        case IDT_NT_NTINTMSK:
+            ret = s->gregs->nt_int_mask;
+            IVSHMEM_DPRINTF("Read global interrupt mask: 0x%lx\n", ret);
+            break;
+        case IDT_NT_REQIDCAP:
+            ret = pci_requester_id(&s->parent_obj);
+            IVSHMEM_DPRINTF("Read REQIDCAP: 0x%lx\n", ret);
+            break;
+#define READ_BARREG(reg, fld, ind) case IDT_NT_ ## reg ## ind: \
+            ret = s->bar_config[ind].fld; \
+            IVSHMEM_DPRINTF("Read the local %s%d: 0x%lx\n", #reg, ind, ret); \
+            break;
+#define READ_BARREGS(reg, fld) READ_BARREG(reg, fld, 0) \
+            READ_BARREG(reg, fld, 1) \
+            READ_BARREG(reg, fld, 2) \
+            READ_BARREG(reg, fld, 3) \
+            READ_BARREG(reg, fld, 4) \
+            READ_BARREG(reg, fld, 5)
+
+        READ_BARREGS(BARSETUP, setup)
+        READ_BARREGS(BARLIMIT, limit)
+        READ_BARREGS(BARLTBASE, ltbase)
+        READ_BARREGS(BARUTBASE, utbase)
+
+#undef READ_BARREGS
+#undef READ_BARREG
+
+        default:
+            IVSHMEM_DPRINTF("Invalid read at addr " HWADDR_FMT_plx " for config space\n", addr);
+            ret = 0;
     }
 
-    IVSHMEM_DPRINTF("Read value 0x%lx at " HWADDR_FMT_plx "\n", ret, addr);
     return ret;
 }
 
@@ -391,6 +833,158 @@ static const MemoryRegionOps ivshmem_mmio_ops = {
         .max_access_size = 4,
     },
 };
+
+static void *map_peer_shm(uint32_t self_number) {
+        int fd;
+        struct stat statbuf;
+        void *ret;
+
+        IVSHMEM_DPRINTF("Trying to map peer physical memory\n");
+
+        /* Map peer physical memory */
+        /* fd = shm_open(s->self_number == 0 ? "qemu2" : "qemu1", O_RDWR, 0); - requires -lrt */
+        fd = open(self_number == 0 ? "/dev/shm/qemu2" : "/dev/shm/qemu1", O_RDWR);
+        if (fd == -1) {
+            error_report("idt-ntb-ivshmem: can't open shm, MW access failed\n");
+            return NULL;
+        }
+
+        if (fstat(fd, &statbuf) == -1) {
+            perror("mapping shm failed: fstat");
+            return NULL;
+        }
+
+        ret = mmap(NULL, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (ret == MAP_FAILED) {
+            perror("mapping shm failed: mmap");
+            return NULL;
+        }
+
+        return ret;
+}
+
+static uint64_t idt_bar_read(void *opaque, hwaddr addr,
+                             unsigned size, int idx)
+{
+    IVShmemState *s = opaque;
+    BARConfig c = s->bar_config[idx];
+    uint64_t ret;
+
+    if (!c.limit) {
+        error_report("idt-ntb-ivshmem: memory window is inactive, reading 0");
+        return 0;
+    }
+
+    if ((s->bars[idx].addr + addr) > c.limit) {
+        error_report("idt-ntb-ivshmem: BAR read past limit addr, reading 0 "
+                "(bar: 0x%lx, offset: 0x%lx)", s->bars[idx].addr, addr);
+        return 0;
+    }
+
+    if (s->peer_mem == NULL) {
+        if ((s->peer_mem = map_peer_shm(s->self_number)) == NULL) {
+            return 0;
+        }
+    }
+
+    assert(size == 4 || size == 8);
+    switch (size) {
+        case 4:
+            ret = qatomic_load_acquire(
+                    (uint32_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr));
+            break;
+        case 8:
+            ret = qatomic_load_acquire(
+                    (uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr));
+    }
+
+    IVSHMEM_DPRINTF("BAR%d region read: value 0x%lx at offset 0x%lx (bar: 0x%lx, access size: %u)\n",
+            idx, ret, addr, s->bars[idx].addr, size);
+
+    return ret;
+}
+
+static void idt_bar_write(void *opaque, hwaddr addr,
+                          uint64_t value, unsigned size, int idx)
+{
+    IVShmemState *s = opaque;
+    BARConfig c = s->bar_config[idx];
+
+    if (!c.limit) {
+        error_report("idt-ntb-ivshmem: memory window is inactive, refusing to write");
+        IVSHMEM_DPRINTF("[Host %d] Refused write on BAR%d "
+                "(ltbase: 0x%x, utbase: 0x%x, limit: 0x%x, setup: 0x%x) Addr: 0x%p\n",
+                s->self_number, idx, c.ltbase, c.utbase, c.limit, c.setup, (void*)s->bar_config);
+        return;
+    }
+
+    if ((s->bars[idx].addr + addr) > c.limit) {
+        error_report("idt-ntb-ivshmem: BAR write past limit addr, refusing to write "
+                "(bar: 0x%lx, offset: 0x%lx)", s->bars[idx].addr, addr);
+        return;
+    }
+
+    if (s->peer_mem == NULL) {
+        if ((s->peer_mem = map_peer_shm(s->self_number)) == NULL) {
+            return;
+        }
+    }
+
+    IVSHMEM_DPRINTF("BAR%d region write: value 0x%lx at offset 0x%lx (bar: 0x%lx, access size: %u)\n",
+            idx, value, addr, s->bars[idx].addr, size);
+
+    assert(size == 4 || size == 8);
+    switch (size) {
+        case 4:
+            qatomic_store_release(
+                    (uint32_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr),
+                    (uint32_t)value);
+            break;
+        case 8:
+            qatomic_store_release(
+                    (uint64_t *)(s->peer_mem + ((uint64_t)c.utbase << 32) + c.ltbase + addr),
+                    value);
+    }
+}
+
+#define BAR_READ_FN(n) static uint64_t idt_bar ## n ## _read(void *opaque, \
+        hwaddr addr, unsigned size) \
+    { \
+        return idt_bar_read(opaque, addr, size, n); \
+    }
+#define BAR_WRITE_FN(n) static void idt_bar ## n ## _write(void *opaque, \
+        hwaddr addr, uint64_t value, unsigned size) \
+    { \
+        return idt_bar_write(opaque, addr, value, size, n); \
+    }
+#define BAR_FNS(n) BAR_READ_FN(n) \
+    BAR_WRITE_FN(n)
+
+BAR_FNS(2)
+BAR_FNS(3)
+BAR_FNS(4)
+BAR_FNS(5)
+
+#undef BAR_FNS
+#undef BAR_WRITE_FN
+#undef BAR_READ_FN
+
+#define BAR_OPS(n) static const MemoryRegionOps idt_bar ## n ## _ops = { \
+    .read = idt_bar ## n ## _read, \
+    .write = idt_bar ## n ## _write, \
+    .endianness = DEVICE_LITTLE_ENDIAN, \
+    .impl = { \
+        .min_access_size = 4, \
+        .max_access_size = 8, \
+    }, \
+}
+
+BAR_OPS(2);
+BAR_OPS(3);
+BAR_OPS(4);
+BAR_OPS(5);
+
+#undef BAR_OPS
 
 static void ivshmem_vector_notify(void *opaque)
 {
@@ -405,21 +999,18 @@ static void ivshmem_vector_notify(void *opaque)
         return;
     }
 
+    /* TODO: honor interrupt masks */
     IVSHMEM_DPRINTF("interrupt on vector %p %d (self_number is %d)\n", pdev, vector, s->self_number);
     switch (vector) {
-        case 0:
+        case EVENTFD_VM_ID:
             s->other_vm_id = *s->other_vm_id_shared;
             break;
-        case 1:
-            IVSHMEM_DPRINTF("Received value 0x%x to the inbound doorbell\n", *s->db_inbound);
-            // TODO: maybe need to send an interrupt?
-            break;
-        case 2:
-            IVSHMEM_DPRINTF("Read value 0x%lx to the inbound message register\n", s->inbound[0]);
+        case EVENTFD_INTERRUPT_HOST:
+            IVSHMEM_DPRINTF("Passing interrupt to the host (vm%d)\n", s->vm_id);
             interrupt_notify(s, 0);
             break;
         default:
-            error_report("idt-ntb-ivshmem: event interrupt on unknown vector %d\n", vector);
+            error_report("idt-ntb-ivshmem: event interrupt on unknown vector %d", vector);
             break;
     }
 }
@@ -993,12 +1584,13 @@ static void ivshmem_write_config(PCIDevice *pdev, uint32_t address,
 static uint32_t ivshmem_read_config(PCIDevice *pdev, uint32_t address,
                                  int len)
 {
+    IVShmemState *s = IVSHMEM_NTB_IDT(pdev);
     uint32_t ret;
     ret = pci_default_read_config(pdev, address, len);
     IVSHMEM_DPRINTF("Default config value at address 0x%x is 0x%x\n", address, ret);
     switch(address){
         case IDT_NT_BARSETUP0:
-            ret = VALUE_NT_BARSETUP0;
+            ret = s->bar_config[0].setup;
             break;
         default:
             ret = pci_default_read_config(pdev, address, len);
@@ -1024,12 +1616,30 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     pci_conf = dev->config;
     pci_conf[PCI_COMMAND] = PCI_COMMAND_IO | PCI_COMMAND_MEMORY;
 
-    memory_region_init_io(&s->ivshmem_mmio, OBJECT(s), &ivshmem_mmio_ops, s,
-                          "ivshmem-mmio", IVSHMEM_REG_BAR_SIZE);
+    memory_region_init_io(&s->bars[0], OBJECT(s), &ivshmem_mmio_ops, s,
+                          "idt-mmio", IVSHMEM_REG_BAR_SIZE);
 
-    /* region for registers*/
+    memory_region_init_io(&s->bars[2], OBJECT(s), &idt_bar2_ops, s,
+                          "idt-bar2", IDT_BAR_APERTURE_SIZE);
+    memory_region_init_io(&s->bars[3], OBJECT(s), &idt_bar3_ops, s,
+                          "idt-bar3", IDT_BAR_APERTURE_SIZE);
+    memory_region_init_io(&s->bars[4], OBJECT(s), &idt_bar4_ops, s,
+                          "idt-bar4", IDT_BAR_APERTURE_SIZE);
+    //memory_region_init_io(&s->bars[5], OBJECT(s), &idt_bar5_ops, s,
+    //                      "idt-bar5", IDT_BAR_APERTURE_SIZE);
+
+    /* NT Configuration Space */
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     &s->ivshmem_mmio);
+                     &s->bars[0]);
+
+    pci_register_bar(dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &s->bars[2]);
+    pci_register_bar(dev, 3, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &s->bars[3]);
+    pci_register_bar(dev, 4, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &s->bars[4]);
+    //pci_register_bar(dev, 5, PCI_BASE_ADDRESS_SPACE_MEMORY,
+    //                 &s->bars[5]);
 
     if (s->hostmem != NULL) {
         IVSHMEM_DPRINTF("using hostmem\n");
@@ -1090,23 +1700,66 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     }
 
     vmstate_register_ram(s->ivshmem_bar2, DEVICE(s));
-    pci_register_bar(PCI_DEVICE(s), 2,
-                     PCI_BASE_ADDRESS_SPACE_MEMORY |
-                     PCI_BASE_ADDRESS_MEM_PREFETCH |
-                     PCI_BASE_ADDRESS_MEM_TYPE_64,
-                     s->ivshmem_bar2);
+    //pci_register_bar(PCI_DEVICE(s), 2,
+    //                 PCI_BASE_ADDRESS_SPACE_MEMORY |
+    //                 PCI_BASE_ADDRESS_MEM_PREFETCH |
+    //                 PCI_BASE_ADDRESS_MEM_TYPE_64,
+    //                 s->ivshmem_bar2);
 
-    // Initialize pointers to various outbound registers
+    // Initialize pointers to various registers
     shm_storage = (struct idt_ivshmem_shm_storage*)memory_region_get_ram_ptr(s->ivshmem_bar2);
 
-    s->vm_id_shared = s->self_number == 0 ? &shm_storage->vm1.id : &shm_storage->vm2.id;
-    s->other_vm_id_shared = s->self_number == 0 ? &shm_storage->vm2.id : &shm_storage->vm1.id;
+    s->gregs = &shm_storage->gregs;
+    s->gregs->nt_int_mask = (0x1U |         // Message Interrupt
+                            (0x1U << 1) |   // Doorbell Interrupt
+                            (0x1U << 3) |   // Switch Event
+                            (0x1U << 4) |   // Failover Mode Change Initiated (Not used)
+                            (0x1U << 5) |   // Failover Mode Change Completed (Not used)
+                            (0x1U << 7));   // Temperature Sensor Alarm (Not used)
 
-    s->db_inbound = s->self_number == 0 ? &shm_storage->vm1.db : &shm_storage->vm2.db;
-    s->db_outbound = s->self_number == 0 ? &shm_storage->vm2.db : &shm_storage->vm1.db;
+    if (s->self_number == 0) {
+        s->vm_id_shared = &shm_storage->vm1.id;
+        s->other_vm_id_shared = &shm_storage->vm2.id;
 
-    s->inbound = s->self_number == 0 ? shm_storage->vm1.msg : shm_storage->vm2.msg;
-    s->outbound = s->self_number == 0 ? shm_storage->vm2.msg : shm_storage->vm1.msg;
+        s->regs = &shm_storage->vm1.regs;
+        s->peer_regs = &shm_storage->vm2.regs;
+
+        s->regs->ntctl = VALUE_NTP0_NTCTL;
+
+        /* Initialize BAR register configurations */
+        s->bar_config = shm_storage->vm1.bar_config;
+        s->peer_bar_config = shm_storage->vm2.bar_config;
+    } else {
+        s->vm_id_shared = &shm_storage->vm2.id;
+        s->other_vm_id_shared = &shm_storage->vm1.id;
+
+        s->regs = &shm_storage->vm2.regs;
+        s->peer_regs = &shm_storage->vm1.regs;
+
+        s->regs->ntctl = VALUE_NTP2_NTCTL;
+
+        /* Initialize BAR register configurations */
+        s->bar_config = shm_storage->vm2.bar_config;
+        s->peer_bar_config = shm_storage->vm1.bar_config;
+    }
+
+    s->bar_config[0].setup = VALUE_NT_BARSETUP0;
+
+    s->bar_config[2].setup = VALUE_NT_BARSETUP2;
+    s->bar_config[3].setup = VALUE_NT_BARSETUP3;
+    s->bar_config[4].setup = VALUE_NT_BARSETUP4;
+    //s->bar_config[5].setup = VALUE_NT_BARSETUP5;
+
+    /* Pre-initialize peer BARSETUPs so that port scan results are always correct */
+    {
+        BARConfig *peer_bar_config =
+            s->self_number == 0 ? shm_storage->vm2.bar_config : shm_storage->vm1.bar_config;
+        if (!peer_bar_config[0].setup) {
+            for (int i = 0; i < 6; i++) {
+                peer_bar_config[i] = s->bar_config[i];
+            }
+        }
+    }
 }
 
 static void ivshmem_exit(PCIDevice *dev)
@@ -1230,7 +1883,7 @@ static void ivshmem_ntb_idt_class_init(ObjectClass *klass, void *data)
     k->config_read = ivshmem_read_config;
     k->vendor_id = PCI_VENDOR_ID_IVSHMEM;
     k->device_id = PCI_DEVICE_ID_IVSHMEM;
-    k->class_id = PCI_CLASS_BRIDGE_OTHER;
+    k->class_id = PCI_CLASS_BRIDGE_OTHER; /* NT function */
     k->revision = 0;
     dc->reset = ivshmem_reset;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

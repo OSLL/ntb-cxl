@@ -17,7 +17,9 @@ if [ "$QEMU_SHM_SIZE" ]; then
 		-machine memory-backend=mem -m ${QEMU_SHM_SIZE}m"
 fi
 
-runqemu qemux86-64 nographic slirp qemuparams="$COMMON_OPTIONS ${VM1_OPTIONS_OVERRIDE:-$VM1_OPTIONS}"
+ARCH="$NTB_CXL_ARCH"
+
+runqemu qemu${ARCH//_/-} nographic slirp qemuparams="$COMMON_OPTIONS ${VM1_OPTIONS_OVERRIDE:-$VM1_OPTIONS}"
 
 set +x
 
