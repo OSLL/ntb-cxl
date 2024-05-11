@@ -28,7 +28,7 @@ use extended flags with the suffix '-override', e.g. '--vm1-opts-override'
 
 
 export BUILD_VAL="all"
-
+export NTB_CXL_ARCH="x86_64"
 
 for ARGUMENT in "$@"; do
     KEY="$(echo "$ARGUMENT" | cut -f1 -d=)"
@@ -76,7 +76,10 @@ for ARGUMENT in "$@"; do
             export BUILD_VAL=$VALUE
             ;;
         --qemu-map-ram-to-shm)
-            export QEMU_SHM_SIZE="${VALUE:-256}"
+            export QEMU_SHM_SIZE="${VALUE:-1024}"
+            ;;
+        --arch)
+            export NTB_CXL_ARCH="$VALUE"
             ;;
         -h | --help)
             help

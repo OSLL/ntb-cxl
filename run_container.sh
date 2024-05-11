@@ -26,7 +26,7 @@ if [ -z "$BUILD_FOLDER_NAME" ]; then
 fi
 
 if ! [ "$DOCKER_SHM_SIZE" ]; then
-    DOCKER_SHM_SIZE="256m";
+    DOCKER_SHM_SIZE="1024m";
 fi
 
 BUILD_PATH="$PWD"/"$BUILD_FOLDER_NAME"
